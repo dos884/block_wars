@@ -178,6 +178,24 @@ body.lobby #hud, body.lobby #controls, body.lobby #layers{display:none}
 #hashBox[hidden]{display:none}
 #netRow[hidden]{display:none}
 #reset[hidden],#winUndo[hidden],#menuBtn[hidden],#cmdBtn[hidden]{display:none!important}
+/* Bottom controls: a move joystick on the left, equal-size buttons on the right (4 columns, 2 rows). */
+#controls{align-items:flex-end;gap:12px}
+.leftpad{position:relative;pointer-events:auto;display:flex;flex-direction:column;gap:10px;align-items:center;flex:none}
+.selrow{display:grid;grid-template-columns:1fr 1fr;gap:6px;width:128px}
+.cgrid{position:relative;pointer-events:auto;flex:1;min-width:0;max-width:340px;margin-left:auto;
+  display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:54px;gap:6px}
+.cbtn{min-width:0;height:auto;padding:0 2px;font-size:13px;line-height:1.1;border-radius:12px;box-shadow:0 3px 0 var(--ink)}
+.cbtn.pressed{transform:translateY(3px);box-shadow:0 0 0 var(--ink)}
+.selrow .cbtn{height:40px}
+.cbtn.confirm{height:auto;font-size:13px}
+#acount{display:block;font-size:10px;font-weight:800;color:var(--muted);margin-top:1px}
+#buildPanel{left:auto;right:0}
+.joy{position:relative;width:128px;height:128px;border-radius:50%;border:2px solid var(--ink);background:var(--panel);
+  touch-action:none;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);transition:opacity .15s}
+.joy .knob{position:absolute;width:52px;height:52px;border-radius:50%;background:var(--cmd);border:2px solid var(--ink);left:36px;top:36px;pointer-events:none}
+.joy.off{opacity:.35}
+.joy.live{background:color-mix(in srgb, var(--panel) 70%, var(--cmd))}
+@media (max-width:360px){.cbtn{font-size:12px}.joy{width:112px;height:112px}.joy .knob{left:28px;top:28px}.selrow{width:112px}}
 #joinView{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px;color:#fff;font-weight:800;text-align:center}
 #joinView[hidden]{display:none}
 #menuView{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10;display:flex;align-items:center;justify-content:center;padding:16px}
@@ -297,26 +315,24 @@ body.lobby #hud, body.lobby #controls, body.lobby #layers{display:none}
 </div>
 
 <div id="controls">
-  <div class="unitswrap">
+  <div class="leftpad">
     <div id="unitsPanel" hidden></div>
-    <div id="buildPanel" hidden></div>
-    <button class="btn nextbtn" id="buildBtn" aria-haspopup="true" aria-expanded="false" aria-controls="buildPanel">Build ▴</button>
-    <button class="btn unitsbig" id="unitsBtn" aria-haspopup="true" aria-expanded="false" aria-controls="unitsPanel">Units ▴</button>
-    <button class="btn nextbtn" data-act="next" aria-label="Select the next unit that hasn't moved">Next ▸</button>
+    <div class="selrow">
+      <button class="btn cbtn" id="unitsBtn" aria-haspopup="true" aria-expanded="false" aria-controls="unitsPanel">Units ▴</button>
+      <button class="btn cbtn" data-act="next" aria-label="Select the next unit that hasn't moved">Next ▸</button>
+    </div>
+    <div id="joy" class="joy" role="application" aria-label="Move: drag to walk the selected unit, let go to stop on a tile"><div class="knob"></div></div>
   </div>
-  <div class="acts">
-    <div class="undorow">
-      <button class="btn" data-act="undo" aria-label="Undo last action">↶ Undo</button>
-      <span id="acount" class="chip">0 actions</span>
-      <button class="btn" data-act="redo" aria-label="Redo">Redo ↷</button>
-    </div>
-    <div style="display:flex;gap:8px">
-      <button class="btn dig" data-act="attack" aria-pressed="false" style="min-width:0;flex:1">Attack</button>
-      <button class="btn dig" data-act="dig" aria-pressed="false" style="min-width:0;flex:1">Dig</button>
-      <button class="btn dig" data-act="capture" style="min-width:0;flex:1">Capture</button>
-    </div>
-    <button class="btn confirm" data-act="confirm">Confirm move</button>
-    <button class="btn endturn" data-act="endturn">End turn</button>
+  <div class="cgrid">
+    <div id="buildPanel" hidden></div>
+    <button class="btn cbtn dig" data-act="attack" aria-pressed="false">Attack</button>
+    <button class="btn cbtn dig" data-act="dig" aria-pressed="false">Dig</button>
+    <button class="btn cbtn" data-act="capture">Capture</button>
+    <button class="btn cbtn" id="buildBtn" aria-haspopup="true" aria-expanded="false" aria-controls="buildPanel">Build ▴</button>
+    <button class="btn cbtn" data-act="undo" aria-label="Undo last action">↶ Undo<span id="acount">0</span></button>
+    <button class="btn cbtn" data-act="redo" aria-label="Redo">Redo ↷</button>
+    <button class="btn cbtn confirm" data-act="confirm">Confirm</button>
+    <button class="btn cbtn" data-act="endturn">End turn</button>
   </div>
 </div>
 
@@ -957,9 +973,41 @@ function walkTo(target) {
   walker.path = pts; walker.seg = 0; walker.t = 0;
   pending = target;
 }
+/* ---------- Joystick: walk the unit freely inside its blue tiles; let go and it settles on the tile it's on ---------- */
+const joy = { x: 0, y: 0 };
+const canWalk = () => !selUnit().moved && !falling && myTurn() && range.size > 0 && S.winner < 0;
+// Try to move to (nx, nz). Crossing into the next column uses the same step rule as the move range,
+// so the unit climbs and drops exactly where it could walk; a blocked axis just doesn't move (you slide along edges).
+function joyTry(nx, nz) {
+  const u = selUnit(), p = walker.p, [ox, oy, oz] = pending;
+  const cx = Math.floor(nx), cz = Math.floor(nz);
+  if (cx === ox && cz === oz) { p.x = nx; p.z = nz; return; }
+  if (Math.abs(cx - ox) + Math.abs(cz - oz) !== 1) return;
+  const ny = stepTo(S, u, ox, oy, oz, cx - ox, cz - oz);
+  if (ny < 0 || !range.has(cellKey(cx, ny, cz))) return;
+  pending = [cx, ny, cz];
+  p.x = nx; p.z = nz;
+}
+function joyStep(dt) {
+  const p = walker.p;
+  if (walker.path.length > 1) {                       // a tap-walk was under way: continue from the tile it reached
+    pending = walker.path[walker.seg].cell.slice();
+    walker.path = [];
+  }
+  const push = Math.min(1, Math.hypot(joy.x, joy.y));
+  const fx = -Math.sin(yaw), fz = -Math.cos(yaw);    // "up" on the stick = away from the camera
+  const vx = -fz * joy.x + fx * joy.y, vz = fx * joy.x + fz * joy.y, len = Math.hypot(vx, vz) || 1;
+  const step = SPEED * push * dt;
+  joyTry(p.x + vx / len * step, p.z);
+  joyTry(p.x, p.z + vz / len * step);
+  walker.face = Math.atan2(vx, vz);
+  p.y += (pending[1] - p.y) * Math.min(1, dt * 14);  // hop up / drop down as it crosses
+}
 function stepWalker(dt) {
   const u = selUnit(), p = walker.p;
-  if (walker.path.length > 1) {
+  if (Math.hypot(joy.x, joy.y) > 0.15 && canWalk() && !commander && !lobbyOpen) {
+    joyStep(dt);
+  } else if (walker.path.length > 1) {
     let adv = dt * SPEED;
     while (adv > 0 && walker.seg < walker.path.length - 1) {
       const a = walker.path[walker.seg], b = walker.path[walker.seg + 1];
@@ -1034,9 +1082,9 @@ function setMode(m) {
   attackMode = m === 'attack';
   const d = document.querySelector('[data-act="dig"]'), at = document.querySelector('[data-act="attack"]');
   d.classList.toggle('on', digMode); d.setAttribute('aria-pressed', String(digMode));
-  d.textContent = digMode ? 'Digging: tap blocks' : 'Dig';
+  d.textContent = digMode ? 'Dig ✓' : 'Dig';
   at.classList.toggle('on', attackMode); at.setAttribute('aria-pressed', String(attackMode));
-  at.textContent = attackMode ? 'Attack: tap enemy' : 'Attack';
+  at.textContent = attackMode ? 'Attack ✓' : 'Attack';
 }
 
 /* ---------- Long-press a unit: the nearest thing under the finger decides ---------- */
@@ -1232,7 +1280,8 @@ function refreshHud() {
   document.querySelector('[data-act="confirm"]').disabled = u.moved || falling || !mine;
   document.querySelector('[data-act="endturn"]').disabled = falling || !mine;
   const nAct = S.cursor;
-  $('acount').textContent = nAct + (nAct === 1 ? ' action' : ' actions');
+  $('acount').textContent = nAct;
+  $('joy').classList.toggle('off', !canWalk());
   document.querySelector('[data-act="undo"]').disabled = falling || !S.cursor || !mine;
   document.querySelector('[data-act="redo"]').disabled = falling || S.cursor >= S.history.length || !mine;
   document.querySelector('[data-act="attack"]').disabled = u.acted || falling || S.winner >= 0 || !mine;
@@ -1851,6 +1900,7 @@ function bindStick(el, out) {
   el.addEventListener('pointercancel', end);
 }
 bindStick($('stickMove'), moveStick);
+bindStick($('joy'), joy);
 // Screenshot: render the 3D view once more (no buttons, no sticks) and offer it as a PNG.
 let downloadsApi = null;
 if (window.claude && window.claude.use) window.claude.use('downloads').then(d => { downloadsApi = d; }, () => {});

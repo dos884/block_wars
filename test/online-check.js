@@ -98,6 +98,9 @@ const ok = (cond, msg) => { console.log((cond ? 'ok   ' : 'FAIL ') + msg); if (!
     // Quick play between two strangers: the first waits, the second is paired, both land in the match.
     // Not on the live site: the test players could get paired with a real person waiting there.
     if (!process.env.SITE) {
+    await red.screenshot({ path: path.join(__dirname, 'out', 'lobby.png') });
+    // Close the friend-game tabs first: five 3D tabs at once is too much for software rendering on the server.
+    for (const p of [blue, red, third]) await p.context().close();
     const q1 = await open(), q2 = await open();
     await q1.goto(site + '/'); await q2.goto(site + '/');
     for (const p of [q1, q2]) await p.waitForFunction(() => document.getElementById('lName').value.length > 0, null, { timeout: 15000 });
@@ -125,8 +128,6 @@ const ok = (cond, msg) => { console.log((cond ? 'ok   ' : 'FAIL ') + msg); if (!
       && (await q2.textContent('#ustate')) === 'Game over', `opponent sees: "${await q2.textContent('#winText')} ${await q2.textContent('#winSub')}"`);
     await q2.screenshot({ path: path.join(__dirname, 'out', 'quit.png') });
     }
-    await red.screenshot({ path: path.join(__dirname, 'out', 'lobby.png') });
-    await blue.screenshot({ path: path.join(__dirname, 'out', 'online-blue.png') });
     ok(!errors.length, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
   } finally {
     await browser.close();
