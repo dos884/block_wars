@@ -571,12 +571,53 @@ const BODY = [
   "...KKKK.KKKK....",
   "................"
 ];
+// The knight rides a horse: its own 28 x 40 sprite, two cubes tall. R/r horse, A mane and tail, U/u team cloth.
+const KNIGHT = [
+  "...........UU...............",
+  "..........UUUU............M.",
+  ".........HhhhhH.........MM..",
+  ".........HhhHHH.........MM..",
+  ".........HHHHHH........W....",
+  ".........HEEHEE.......W.....",
+  ".........HHHHHH......W......",
+  ".........HHHHHH.....W.R.....",
+  "..........MMMM....UU.AR.....",
+  ".........uUUUUu...U.ARRRR...",
+  "......MMMMUUUUu..W..ARRERR..",
+  "......MUUMUUUUUUWS..ARRRRRR.",
+  "......MUUMUUUUUWSS..ARBBBRRr",
+  "......MUUMUUUUW....ARRRRRRRR",
+  "......MUUMUUUWu....ARRRRrrrr",
+  ".......MM.UUUUu...ARRRRR....",
+  ".......MMuUUUUu...ARRRRR....",
+  ".........BBBBBB..ARRRRR.....",
+  "........BB.PPPP..ARRRRR.....",
+  "........BBBPPPP..ARRRRR.....",
+  ".....RuUUUUUUPPUuRRRRR......",
+  "...ARRuUUUUUUPPUuRRRRR......",
+  "..ARRRuUUUUUUPPUuRRRRR......",
+  ".A.RRRuUUUUUUPPUuRRRR.......",
+  ".A.RRRuUUUUUUKKKuRRRR.......",
+  ".A.RRRuUUUUUUKKKuRRRR.......",
+  ".A.RRRuUUUUUUUUUuRRRR.......",
+  "..A.RRuUUUUUUUUUuRRRR.......",
+  ".A...ruUUUUUUUUUurrr........",
+  "..A.rruUUUUUUUUUurr.RR......",
+  ".A..rruUuuUuuUuuurr.RR......",
+  "....rr.RR........rr.RR......",
+  "....rr.RR........rr.RR......",
+  "....rr.rR........rr.rR......",
+  "....rr.RR........rr.RR......",
+  "....rr.RR........rr.RR......",
+  "....rr.RR........rr.RR......",
+  "....KK.KK........KK.KK......",
+  "....KK.KK........KK.KK......",
+  "............................"
+];
 // Weapon pixels per type: [x, y, palette key] drawn over the body.
 const WEAPON = {
   soldier:  [[12, 4, 'M'], [12, 5, 'M'], [12, 6, 'M'], [12, 7, 'M'], [12, 8, 'M'], [12, 9, 'M'], [11, 10, 'B'], [12, 10, 'B'], [13, 10, 'B'], [12, 11, 'B']],
   spearman: [[12, 0, 'M'], [11, 1, 'M'], [12, 1, 'M'], [13, 1, 'M'], ...Array.from({ length: 19 }, (_, k) => [12, 2 + k, 'W'])],
-  knight:   [[12, 3, 'M'], [12, 4, 'M'], [12, 5, 'M'], [12, 6, 'M'], [12, 7, 'M'], [12, 8, 'M'], [12, 9, 'M'], [11, 10, 'B'], [12, 10, 'B'], [13, 10, 'B'],
-             [0, 9, 'M'], [1, 9, 'M'], [0, 10, 'M'], [1, 10, 'U'], [0, 11, 'M'], [1, 11, 'U'], [0, 12, 'M'], [1, 12, 'M']],
   archer:   [[12, 4, 'W'], [13, 5, 'W'], [14, 6, 'W'], [14, 7, 'W'], [14, 8, 'W'], [14, 9, 'W'], [13, 10, 'W'], [12, 11, 'W'],
              [12, 5, 'T'], [12, 6, 'T'], [12, 7, 'T'], [12, 8, 'T'], [12, 9, 'T'], [12, 10, 'T']],
   builder:  [[10, 4, 'M'], [11, 4, 'M'], [12, 4, 'M'], [13, 4, 'M'], [14, 4, 'M'], [12, 5, 'W'], [12, 6, 'W'], [12, 7, 'W'], [12, 8, 'W'], [12, 9, 'W'], [12, 10, 'W']],
@@ -584,19 +625,20 @@ const WEAPON = {
 const HELMET = { soldier: ['#4b5320', '#6b7a35'], spearman: ['#6b4423', '#8a5a33'], knight: ['#9aa3ad', '#d5dbe1'],
                  archer: ['#2f6b3a', '#4f8f5a'], builder: ['#e2b714', '#f5d652'] };
 const SPRITE_PAL = { S: '#f1c27d', s: '#d9a066', E: '#22303b', B: '#6b4423', P: '#3a3f2a', K: '#161616',
-                     M: '#c9ced6', W: '#8a5a33', T: '#e8e1cf' };
+                     M: '#c9ced6', W: '#8a5a33', T: '#e8e1cf', R: '#9a6b43', r: '#6e4a2c', A: '#2b1d14' };
 const spriteCache = new Map();
 function unitTexture(type, team) {
   const key = type + team;
   if (spriteCache.has(key)) return spriteCache.get(key);
+  const art = type === 'knight' ? KNIGHT : BODY;
   const c = document.createElement('canvas');
-  c.width = 16; c.height = 24;
+  c.width = art[0].length; c.height = art.length;
   const ctx = c.getContext('2d');
   const tc = new THREE.Color(TEAM_COLORS[team]), shade = tc.clone().multiplyScalar(0.62);
   const pal = Object.assign({}, SPRITE_PAL, { U: '#' + tc.getHexString(), u: '#' + shade.getHexString(), H: HELMET[type][0], h: HELMET[type][1] });
   const px = (x, y, k) => { ctx.fillStyle = pal[k]; ctx.fillRect(x, y, 1, 1); };
-  BODY.forEach((row, y) => { for (let x = 0; x < row.length; x++) if (row[x] !== '.') px(x, y, row[x]); });
-  for (const [x, y, k] of WEAPON[type]) px(x, y, k);
+  art.forEach((row, y) => { for (let x = 0; x < row.length; x++) if (row[x] !== '.') px(x, y, row[x]); });
+  for (const [x, y, k] of WEAPON[type] || []) px(x, y, k);
   const t = new THREE.CanvasTexture(c);
   t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
   spriteCache.set(key, t);
@@ -608,15 +650,15 @@ const unitGroups = [];
 function makeUnitGroup(u) {
   const g = new THREE.Group();
   const tall = UNIT_TYPES[u.type].tall;
-  const sprite = new THREE.Mesh(new THREE.PlaneGeometry(tall ? 1.0 : 0.74, tall ? 1.5 : 1.1),
+  const sprite = new THREE.Mesh(new THREE.PlaneGeometry(tall ? 1.4 : 0.74, tall ? 2.0 : 1.1),   // same pixel size: 28 x 40 vs 16 x 24
     new THREE.MeshBasicMaterial({ map: unitTexture(u.type, u.team), alphaTest: 0.5, side: THREE.DoubleSide }));
-  sprite.position.y = tall ? 0.75 : 0.55;
+  sprite.position.y = tall ? 1.0 : 0.55;
   g.add(sprite);
   g.userData.sprite = sprite;
   // Invisible hit box, bigger than the sprite, used for long-press selection and attack targeting.
-  const hit = new THREE.Mesh(new THREE.BoxGeometry(1, tall ? 1.9 : 1.4, 1),
+  const hit = new THREE.Mesh(new THREE.BoxGeometry(1, tall ? 2.1 : 1.4, 1),
     new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false }));
-  hit.position.y = tall ? 0.95 : 0.7;
+  hit.position.y = tall ? 1.05 : 0.7;
   g.add(hit);
   g.userData.hit = hit;
   // HP bar above the head (turned to the camera together with the sprite).
@@ -625,7 +667,7 @@ function makeUnitGroup(u) {
   const hpFill = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 0.07), new THREE.MeshBasicMaterial({ color: 0x4ade80, side: THREE.DoubleSide }));
   hpFill.position.z = 0.002;
   hpBar.add(hpBg, hpFill);
-  hpBar.position.y = tall ? 1.68 : 1.28;
+  hpBar.position.y = tall ? 2.18 : 1.28;
   g.add(hpBar);
   g.userData.hpBar = hpBar; g.userData.hpFill = hpFill;
   g.userData.vis = new THREE.Vector3(u.x + 0.5, u.y, u.z + 0.5);
