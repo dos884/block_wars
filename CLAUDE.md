@@ -15,8 +15,15 @@
 - Base rules copied from Advance Wars: fixed bases build units (one unit per turn), villages give income, capture enemy base to win.
 - Twist: voxel terrain. Digging, collapses (per-material support reach), finite water/floods, undo.
 
-## Current code: `sim.html`
-Single-file Three.js r128 (from cdnjs) app. Hot-seat 2 teams. Deterministic integer sim.
+## Current code
+- `sim-core.js`: the deterministic sim (pure, no Three.js/DOM). Loads as a browser script (`window.BlockSim`) or a Node module. Also: action recording into the undo journal, `turnGroups`, `replayTurn` (shared by server and client).
+- `sim.html`: the view/UI (Three.js r128 from cdnjs). Hot-seat by default; online when opened as `/?m=<match id>`.
+- `server/server.js`: match server, `node:http` + `node:sqlite` (Node 22, no npm deps). Replays and hash-checks every turn.
+- `test/`: `npm test` = determinism vs golden hashes (Node + Chromium), server API checks, and a two-browser online match.
+  `golden.json` was recorded from the ORIGINAL pre-split game (`make-golden.js`); a sim change that should alter results needs a deliberate re-record.
+- `ops/` + `deploy.sh`: Caddyfile, systemd units (server, nightly backup). Run `./deploy.sh` as root to ship.
+
+Sim details:
 - Map `W=96, D=96, H=40`, hills, bridge with pillars, reservoir with wooden dam, 40 trees.
 - Bases at x = center ± 20 (`BASE_X=20`), villages mirrored (`VILLAGE_OFFSETS`), units spawn next to own base (`SPAWN_OFFSET=16`).
 - Units (`UNIT_TYPES`): soldier (move 6, cost 100, digs soft), spearman (6/150), knight (10/300, no dig, no capture, can't climb, tall), archer (6/200, ranged 2..3, +1 if ≥2 higher), builder (6/150, digs hard).
@@ -38,9 +45,13 @@ Known gaps: archers have no line-of-sight; digging is unlimited per turn; dam br
 - Monetization: donations/cosmetics, no ads in gameplay. Closed source for now, open source after the money phase.
 - Modding later: sandboxed interpreter (QuickJS or Lua in WASM), API = primitives + action registry + events. Matchmaking-first with mod veto/preference overlap.
 
-## Server plan (this machine: Linode VPS, shared CPU)
-1. Split the sim out of `sim.html` into a shared module used by both client and server (pure, deterministic, no Three.js).
-2. Node + SQLite. Endpoints: create match (share link), join, submit turn (replay + validate), fetch turns.
-3. Caddy for HTTPS, nightly SQLite backups.
-4. Then: accounts, matchmaking, approximate Elo, push notification "your turn".
+## Server plan (this machine: Linode VPS 172.236.247.113, shared CPU, 4 cores, 8 GB)
+1. DONE: sim split into `sim-core.js`.
+2. DONE: Node + SQLite server. `POST /api/matches` (create → Blue token), `POST /api/matches/:id/join` (Red), `GET /api/matches/:id?since=n&rev=r` (long-poll ≤25 s), `POST /api/matches/:id/turns` (replay + validate + hash check).
+3. DONE: Caddy serves https://cubewars.io (static from `/var/www/block_wars`, `/api/*` → 127.0.0.1:8787). Server runs as systemd `block-wars` (user `blockwars`, DB `/var/lib/block_wars/bw.sqlite`). Nightly backup 04:00 to `/var/backups/block_wars`, 14 days kept (same disk only).
+4. NEXT: accounts, matchmaking, approximate Elo, push notification "your turn".
 5. Fog of war last.
+
+How online works: in-turn actions stay local with undo/redo. Each successful action is recorded in its journal entry; a turn = the journal entries still in effect ("groups", e.g. [move, dig]). End turn sends `{n, groups, hash}`; the server replays the groups (a dig's collapse/flood resolved inside its group, same as the browser's settle), compares the hash, then End turn + water. The opponent's browser replays the same way.
+
+Known gaps (online): an unsent turn is lost on reload; the opponent's turn appears instantly (no replay animation); the seat token lives in the browser's localStorage (lost if cleared; accounts fix this); no cleanup of old matches; a dam-break turn costs ~1.7 s of server CPU and blocks the server meanwhile (fine now; worker thread if it matters).

@@ -23,7 +23,25 @@ function compare(name, log) {
 }
 
 (async () => {
-  compare('node', runScenario(B));
+  const log = runScenario(B);
+  compare('node', log);
+
+  // Replay the match from its turn lists alone, as the server does, and as the opponent's browser does.
+  const ends = log.filter(([l]) => l.startsWith('end turn')).map(([, h]) => h);
+  const R = B.newState();
+  let bad = null;
+  log.turns.forEach((t, k) => {
+    const err = bad || B.replayTurn(R, t);
+    if (!bad && err) bad = `turn ${k}: ${err}`;
+    else if (!bad && B.stateHash(R) !== ends[k]) bad = `turn ${k}: replay ${B.stateHash(R)}, live ${ends[k]}`;
+  });
+  if (bad) fail('replay: ' + bad);
+  else console.log(`ok   replay: ${log.turns.length} turns from action lists alone give the same hashes`);
+  // A tampered turn must be refused.
+  const T = B.newState(), cheat = JSON.parse(JSON.stringify(log.turns[0]));
+  cheat.groups[1][0].x += 9;                    // move further than the unit can walk
+  const why = B.replayTurn(T, cheat);
+  if (why) console.log(`ok   replay: tampered turn refused (${why})`); else fail('replay: tampered turn was accepted');
 
   const { chromium } = require('playwright');
   const browser = await chromium.launch();

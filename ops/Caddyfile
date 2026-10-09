@@ -1,0 +1,15 @@
+# Block Wars on cubewars.io. Caddy gets and renews the HTTPS certificate itself.
+cubewars.io {
+	encode gzip
+	# The match server (Node, systemd unit block-wars). Long-polls stay open up to 25 s.
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8787
+	}
+	# The game files. no-cache = always check for a new version (cheap: ETag), so the page and
+	# sim-core.js never come from different deploys.
+	handle {
+		root * /var/www/block_wars
+		header Cache-Control "no-cache"
+		file_server
+	}
+}

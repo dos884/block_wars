@@ -388,6 +388,7 @@ function moveUnit(s, u, x, y, z) {
   if (!placeUnit(s, u, x, y, z)) return false;
   u.moved = true;
   resetCaptures(s);
+  record(s, { t: 'move', u: u.id, x, y, z });
   return true;
 }
 /* ---------- Digging: break any block within DIG_REACH of the unit (no limit per turn) ---------- */
@@ -404,6 +405,7 @@ function dig(s, u, x, y, z) {
   if (!canDig(s, u, x, y, z)) return false;
   setCell(s, idx(x, y, z), AIR);
   s.moves++;
+  record(s, { t: 'dig', u: u.id, x, y, z });
   return true;
 }
 /* ---------- Attacking: an adjacent enemy (one tile, up to one block up or down), once per turn ---------- */
@@ -431,6 +433,7 @@ function attack(s, a, b) {
   if (!b.dead && !UNIT_TYPES[b.type].ranged && adjacent(a, b)) hurt(s, a, damageOf(b, a));
   a.acted = true; a.moved = true;              // attacking finishes the unit's turn
   s.moves++;
+  record(s, { t: 'attack', u: a.id, v: b.id });
   return true;
 }
 // Hot-seat turns: control passes to the other team; a full round (Blue then Red) is one turn.
@@ -460,6 +463,7 @@ function capture(s, u) {
   }
   u.acted = true; u.moved = true;
   s.moves++;
+  record(s, { t: 'capture', u: u.id });
   return true;
 }
 const baseOf = (s, team) => s.buildings.find(b => b.kind === 'base' && b.owner === team) || null;
@@ -477,9 +481,60 @@ function buildUnit(s, type) {
   s.built = true;
   s.moves++;
   settleUnits(s);
+  record(s, { t: 'build', type });
   return u;
 }
 const incomeOf = (s, team) => INCOME * s.buildings.filter(b => b.owner === team).length;
+
+/* ---------- Turns as data: what the client sends and the server replays ----------
+   Every successful player action is recorded in the current journal entry, so a turn is simply the list of
+   journal entries still in effect (undone ones drop out by themselves). Each entry is a "group": the actions
+   that ran as one undoable step in the browser, e.g. [move, dig]. Replaying a group re-runs them the same way. */
+function record(s, a) { if (s.jr) s.jr.acts.push(a); }
+const turnGroups = s => s.history.slice(0, s.cursor).map(j => j.acts);
+const isInt = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+// Run one recorded action. Input comes from the network, so check its shape before touching the state.
+function runAct(s, a) {
+  if (!a || typeof a !== 'object') return false;
+  if (a.t === 'build') return TYPES.includes(a.type) && !!buildUnit(s, a.type);
+  if (!isInt(a.u, 0, s.units.length - 1)) return false;
+  const u = s.units[a.u];
+  if (a.t === 'move' || a.t === 'dig') {
+    if (!isInt(a.x, -1, W) || !isInt(a.y, -1, H + 4) || !isInt(a.z, -1, D)) return false;
+    return a.t === 'move' ? moveUnit(s, u, a.x, a.y, a.z) : dig(s, u, a.x, a.y, a.z);
+  }
+  if (a.t === 'attack') return isInt(a.v, 0, s.units.length - 1) && attack(s, u, s.units[a.v]);
+  if (a.t === 'capture') return capture(s, u);
+  return false;
+}
+// One group, exactly as the browser ran it: one journal entry; a dig's collapse and flood resolve inside it.
+function runGroup(s, acts) {
+  if (!Array.isArray(acts) || !acts.length || acts.length > 4) return false;
+  beginAction(s);
+  let ok = true, dug = false;
+  for (const a of acts) { if (!runAct(s, a)) { ok = false; break; } if (a.t === 'dig') dug = true; }
+  if (ok && dug) resolve(s);
+  endAction(s);
+  return ok;
+}
+// A whole turn from the team to move: its groups, then the hash the sender saw before pressing End turn.
+// Then End turn (unless someone won), with whatever water it wakes. Returns null if fine, else the reason.
+// On failure the state is half-applied: the caller must throw it away.
+const MAX_GROUPS = 400;
+function replayTurn(s, turn) {
+  if (s.winner >= 0) return 'match is over';
+  if (!turn || !Array.isArray(turn.groups) || turn.groups.length > MAX_GROUPS) return 'bad turn';
+  for (let k = 0; k < turn.groups.length; k++) if (!runGroup(s, turn.groups[k])) return 'illegal action in group ' + k;
+  const h = stateHash(s);
+  if (turn.hash !== h) return 'desync: sender had ' + turn.hash + ', replay gives ' + h;
+  if (s.winner < 0) finishTurn(s);
+  return null;
+}
+// End turn plus its water: the browser animates the same steps with settle().
+function finishTurn(s) {
+  endTurn(s);
+  if (s.wnext.length) resolve(s);
+}
 
 /* ---------- Undo / redo: every action this turn is journaled and stays undoable until End turn ----------
    While an action runs (including its collapse and flood), the first change to each block or water cell is recorded
@@ -505,7 +560,7 @@ function beginAction(s) {
   if (s.jr) return;
   s.jstamp++;
   s.dfail.fill(0);                              // drain-search cache never carries over between actions
-  s.jr = { gi: [], go: [], wi: [], wo: [], before: smallSnap(s) };
+  s.jr = { gi: [], go: [], wi: [], wo: [], acts: [], before: smallSnap(s) };
 }
 function endAction(s) {
   const j = s.jr;
@@ -752,6 +807,7 @@ const BlockSim = {
   solidAt, unitAt, stepTo, moveOf, moveRange, moveUnit, canDig, dig, canAttack, attack,
   canCapture, capture, canBuild, buildUnit, incomeOf,
   beginAction, endAction, undo, redo, endTurn, gravityStep, waterStep, resolve,
+  turnGroups, runGroup, replayTurn, finishTurn,
 };
 if (typeof module === 'object' && module.exports) module.exports = BlockSim;
 else root.BlockSim = BlockSim;

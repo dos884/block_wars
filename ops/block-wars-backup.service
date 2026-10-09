@@ -1,0 +1,6 @@
+[Unit]
+Description=Back up the Block Wars database (keeps 14 days)
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'mkdir -p /var/backups/block_wars && sqlite3 /var/lib/block_wars/bw.sqlite ".backup /var/backups/block_wars/bw-$(date +%%F).sqlite" && find /var/backups/block_wars -name "bw-*.sqlite" -mtime +14 -delete'

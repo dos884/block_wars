@@ -7,15 +7,17 @@
 function runScenario(B, rounds = 6) {
   const S = B.newState();
   const log = [['start', B.stateHash(S)]];
+  const turns = [];                              // what a client would send each End turn (if the core can record it)
   const note = label => log.push([label, B.stateHash(S)]);
   const cx = B.W >> 1, cz = B.D >> 1;
   const dist = (u, x, z) => Math.abs(u.x - x) + Math.abs(u.z - z);
 
-  // One player action, journaled like the browser does it, with its collapse and flood resolved.
+  // One player action, journaled like the browser does it. Only digging changes blocks, so only a dig
+  // has a collapse and flood to resolve (the browser runs settle() only after a dig, too).
   const action = (label, fn) => {
     B.beginAction(S);
     const ok = fn();
-    B.resolve(S);
+    if (ok && label.startsWith('dig')) B.resolve(S);
     B.endAction(S);
     if (ok) note(label);
     return ok;
@@ -71,10 +73,12 @@ function runScenario(B, rounds = 6) {
         }
       }
     }
+    if (B.turnGroups) turns.push({ groups: JSON.parse(JSON.stringify(B.turnGroups(S))), hash: B.stateHash(S) });
     B.endTurn(S);
     if (S.wnext.length) B.resolve(S);
     note(`end turn ${turn}`);
   }
+  log.turns = turns;
   return log;
 }
 

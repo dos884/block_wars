@@ -129,6 +129,12 @@ body:not(.commander) .cmdui{display:none}
 #shotFlash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:9;transition:opacity .25s}
 #shotView{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px;color:#fff;font-weight:800;text-align:center}
 #shotView[hidden]{display:none}
+#shareView{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px;color:#fff;font-weight:800;text-align:center}
+#shareView[hidden]{display:none}
+#shareLink{width:min(92vw,420px);font:inherit;font-size:15px;padding:10px;border-radius:10px;border:2px solid #fff;text-align:center}
+#netRow{display:flex;align-items:center;gap:6px;margin-top:2px}
+#netRow[hidden]{display:none}
+#onlineBtn[hidden],#reset[hidden],#winUndo[hidden]{display:none!important}
 #shotView img{max-width:100%;max-height:72vh;border-radius:10px;border:2px solid #fff}
 </style>
 </head>
@@ -141,6 +147,7 @@ body:not(.commander) .cmdui{display:none}
     <div class="sub"><span id="ustate">Ready</span> · <span id="pos"></span></div>
     <div class="sub">Turn <b id="turn">1</b> · Wood <b id="invwood">0</b></div>
     <div class="sub">Gold <b id="gold">0</b> <span id="income"></span></div>
+    <div id="netRow" hidden><span class="sub" id="netLine"></span><button class="btn" id="shareBtn" style="padding:2px 8px;font-size:12px;box-shadow:0 2px 0 var(--ink)" hidden>Invite</button></div>
     <div id="status"></div>
   </div>
   <div class="chip" style="text-align:right">
@@ -149,6 +156,7 @@ body:not(.commander) .cmdui{display:none}
     <button class="btn" id="reset" style="margin-top:6px;padding:4px 10px;font-size:13px;box-shadow:0 3px 0 var(--ink)">Reset</button>
     <button class="btn" data-act="view" aria-pressed="false" style="margin-top:6px;padding:4px 10px;font-size:13px;box-shadow:0 3px 0 var(--ink);display:block;margin-left:auto">1st person</button>
     <button class="btn" data-act="commander" style="margin-top:6px;padding:4px 10px;font-size:13px;box-shadow:0 3px 0 var(--ink);display:block;margin-left:auto">Commander</button>
+    <button class="btn" id="onlineBtn" style="margin-top:6px;padding:4px 10px;font-size:13px;box-shadow:0 3px 0 var(--ink);display:block;margin-left:auto" hidden>Play online</button>
   </div>
 </div>
 
@@ -169,6 +177,15 @@ body:not(.commander) .cmdui{display:none}
   <div>Long-press the picture to save it</div>
   <img id="shotImg" alt="Screenshot of the game view">
   <button class="btn" id="shotClose" style="padding:8px 18px;color:var(--ink)">Close</button>
+</div>
+
+<div id="shareView" hidden>
+  <div>Send this link to your opponent.<br>They play Red; you play Blue and can start now.</div>
+  <input id="shareLink" readonly aria-label="Match link">
+  <div style="display:flex;gap:10px">
+    <button class="btn" id="shareGo" style="padding:10px 18px;background:var(--cmd);color:#22303b">Share link</button>
+    <button class="btn" id="shareClose" style="padding:10px 18px">Close</button>
+  </div>
 </div>
 
 <div id="winView" hidden>
@@ -219,7 +236,7 @@ const {
   idx, inGrid, mix, unitName, cellKey, newState, stateHash,
   stepTo, moveOf, moveRange, moveUnit, canDig, dig, canAttack, attack,
   canCapture, capture, canBuild, buildUnit, incomeOf,
-  beginAction, endAction, undo, redo, endTurn, gravityStep, waterStep,
+  beginAction, endAction, undo, redo, endTurn, gravityStep, waterStep, turnGroups, replayTurn,
 } = BlockSim;
 
 /* =========================================================
@@ -628,7 +645,7 @@ reachBox.visible = false;
 scene.add(reachBox);
 function showRange() {
   const u = selUnit();
-  range = u.moved || falling || S.winner >= 0 ? new Map() : moveRange(S, u, moveOf(u));
+  range = u.moved || falling || S.winner >= 0 || !myTurn() ? new Map() : moveRange(S, u, moveOf(u));
   const m = new THREE.Matrix4(), rot = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
   let n = 0;
   rangeKeys = [];
@@ -788,7 +805,7 @@ function pathWithin(from, to) {
 }
 function walkTo(target) {
   const u = selUnit();
-  if (u.moved || falling) return;
+  if (u.moved || falling || !myTurn()) return;
   const animating = walker.path.length > 1;
   const from = animating ? walker.path[Math.min(walker.seg + 1, walker.path.length - 1)].cell : pending;
   const cells = pathWithin(from, target);
@@ -853,7 +870,7 @@ function enemyAtScreen(cx, cy) {
 }
 function tryAttack(cx, cy) {
   const u = selUnit();
-  if (falling) return;
+  if (falling || !myTurn()) return;
   const k = enemyAtScreen(cx, cy);
   if (k < 0) return;
   if (!attackTargets().includes(k)) { flash('Out of reach: move next to it first'); refreshHud(); return; }
@@ -904,7 +921,7 @@ function blockFromTap(cx, cy) {
 }
 function tryDig(cx, cy) {
   const u = selUnit();
-  if (falling) return;
+  if (falling || !myTurn()) return;
   const c = blockFromTap(cx, cy);
   if (!c) return;
   // Digging happens from the unit's real cell, so an unconfirmed move is confirmed first.
@@ -1024,11 +1041,11 @@ function renderBuildPanel() {
   for (const type of TYPES) {
     const t = UNIT_TYPES[type], b = document.createElement('button');
     b.className = 'btn urow';
-    b.disabled = !canBuild(S, type);
+    b.disabled = !canBuild(S, type) || !myTurn();
     b.innerHTML = '<span class="dot" style="background:' + hex(TEAM_COLORS[S.team]) + '"></span>' + t.label + '<span class="sub">' + t.cost + ' gold</span>';
     b.addEventListener('pointerdown', e => {
       e.preventDefault();
-      if (falling || !canBuild(S, type)) return;
+      if (falling || !canBuild(S, type) || !myTurn()) return;
       beginAction(S);
       const nu = buildUnit(S, type);
       endAction(S);
@@ -1069,19 +1086,27 @@ function refreshHud() {
   tintUnits();
   $('hash').textContent = stateHash(S);
   if (performance.now() > flashTimer) $('status').textContent = falling ? 'Collapsing…' : '';
-  document.querySelector('[data-act="confirm"]').disabled = u.moved || falling;
+  const mine = myTurn();
+  document.querySelector('[data-act="confirm"]').disabled = u.moved || falling || !mine;
+  document.querySelector('[data-act="endturn"]').disabled = falling || !mine;
   const nAct = S.cursor;
   $('acount').textContent = nAct + (nAct === 1 ? ' action' : ' actions');
-  document.querySelector('[data-act="undo"]').disabled = falling || !S.cursor;
-  document.querySelector('[data-act="redo"]').disabled = falling || S.cursor >= S.history.length;
-  document.querySelector('[data-act="attack"]').disabled = u.acted || falling || S.winner >= 0;
-  document.querySelector('[data-act="capture"]').disabled = falling || !captureTarget();
+  document.querySelector('[data-act="undo"]').disabled = falling || !S.cursor || !mine;
+  document.querySelector('[data-act="redo"]').disabled = falling || S.cursor >= S.history.length || !mine;
+  document.querySelector('[data-act="attack"]').disabled = u.acted || falling || S.winner >= 0 || !mine;
+  document.querySelector('[data-act="capture"]').disabled = falling || !captureTarget() || !mine;
   $('gold').textContent = S.gold[S.team];
   $('income').textContent = '(+' + incomeOf(S, S.team) + '/turn)';
-  $('buildBtn').disabled = falling || !TYPES.some(t => canBuild(S, t));
+  $('buildBtn').disabled = falling || !mine || !TYPES.some(t => canBuild(S, t));
   if (!$('buildPanel').hidden) renderBuildPanel();
   $('winView').hidden = S.winner < 0;
   if (S.winner >= 0) $('winText').textContent = TEAM_NAMES[S.winner] + ' wins!';
+  if (NET.id) {                                  // online: a win still has to be sent; after that, no undo
+    const unsent = !NET.done && S.winner === NET.team;
+    $('winUndo').hidden = !unsent;
+    $('winAgain').textContent = unsent ? 'Send' : 'Main menu';
+  }
+  netLine();
   if (!$('unitsPanel').hidden) renderUnitsPanel();
 }
 
@@ -1132,8 +1157,10 @@ function ballBlocked(x, y, z, r) {
 }
 
 /* ---------- Actions ---------- */
+const PLAY_ACTS = new Set(['confirm', 'capture', 'undo', 'redo', 'endturn', 'dig', 'attack']);
 function act(a) {
   const u = selUnit();
+  if (PLAY_ACTS.has(a) && !myTurn()) { flash(NET.sending ? 'Sending your turn…' : 'Not your turn'); refreshHud(); return; }
   if (a === 'confirm') {
     if (u.moved || falling) return;
     const [x, y, z] = pending;
@@ -1202,15 +1229,146 @@ function act(a) {
     if (attackMode && !attackTargets().length) flash('No enemy in reach');
   } else if (a === 'endturn') {
     if (falling) return;                     // wait for the current action to finish resolving
+    if (NET.id) { submitTurn(); return; }    // online: the server checks the turn first
     endTurn(S);
-    setMode(null);
-    const first = S.units.findIndex(v => v.team === S.team && !v.dead);
-    if (first >= 0 && first !== sel) selectUnit(first); else { resetWalker(); showRange(); }
-    const hurt = (S.drowned || []).map(id => unitName(S.units[id]) + (S.units[id].dead ? ' drowned' : ' is drowning'));
-    flash(hurt.length ? hurt.join(', ') : TEAM_NAMES[S.team] + "'s turn");
-    if (S.wnext.length) settle();
+    turnStarted();
+    if (S.wnext.length) settle();            // the same steps as the sim's finishTurn(), animated
   }
   refreshHud();
+}
+// After End turn (yours or the opponent's): select the side to move and say what happened.
+function turnStarted(quiet) {
+  setMode(null);
+  const first = S.units.findIndex(v => v.team === S.team && !v.dead);
+  if (first >= 0 && first !== sel) selectUnit(first); else { resetWalker(); showRange(); }
+  const hurt = (S.drowned || []).map(id => unitName(S.units[id]) + (S.units[id].dead ? ' drowned' : ' is drowning'));
+  if (!quiet) flash(hurt.length ? hurt.join(', ') : NET.id && S.team === NET.team ? 'Your turn' : TEAM_NAMES[S.team] + "'s turn");
+}
+
+/* ---------- Online: a match on the server. Your actions stay local (undo works) until End turn sends them;
+   the server replays them with the same sim-core.js and passes them on. The opponent's turns arrive the same way. ---------- */
+const NET = { id: null, team: -1, token: null, count: 0, rev: -1, players: [true, false], sending: false, done: false };
+const myTurn = () => !NET.id || (S.team === NET.team && !NET.sending && !NET.done);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function stored(key, value) {                  // the seat token lives in this browser only (accounts come later)
+  try {
+    if (value === undefined) return JSON.parse(localStorage.getItem(key));
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch { return null; }
+}
+async function api(method, path, body) {
+  const r = await fetch('/api/matches' + path, { method, headers: body ? { 'content-type': 'application/json' } : {}, body: body && JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(j.error || 'server error ' + r.status), { status: r.status });
+  return j;
+}
+function netLine() {
+  if (!NET.id) return;
+  const you = NET.team >= 0 ? 'You are ' + TEAM_NAMES[NET.team] + ' · ' : 'Watching · ';
+  const waitingForJoin = NET.team === 0 && !NET.players[1];
+  $('netLine').textContent = S.winner >= 0 ? you + TEAM_NAMES[S.winner] + ' won'
+    : NET.sending ? you + 'Sending…'
+    : myTurn() ? you + 'Your turn' + (waitingForJoin ? ' · no opponent yet' : '')
+    : you + 'Waiting for ' + TEAM_NAMES[S.team] + '…';
+  $('shareBtn').hidden = !waitingForJoin;
+}
+async function createMatch() {
+  try {
+    const m = await api('POST', '');
+    stored('bw:' + m.id, { team: m.team, token: m.token });
+    location.href = '/?m=' + m.id;
+  } catch (e) { flash("Couldn't start a match: " + e.message); }
+}
+function showShare() {
+  $('shareLink').value = location.origin + '/?m=' + NET.id;
+  $('shareView').hidden = false;
+}
+async function shareLink() {
+  const url = $('shareLink').value;
+  try {
+    if (navigator.share) await navigator.share({ title: 'Block Wars', text: 'Play Block Wars with me', url });
+    else { await navigator.clipboard.writeText(url); flash('Link copied'); }
+  } catch { $('shareLink').select(); }
+}
+// Apply turns from the server that we don't have yet. Each one is replayed and hash-checked like on the server.
+function applyMatch(m, initial) {
+  NET.rev = m.rev; NET.players = m.players;
+  let got = 0;
+  for (const t of m.turns) {
+    if (t.n !== NET.count) continue;
+    const err = replayTurn(S, t);
+    if (err) { NET.done = true; flash('Out of sync with the server, reloading…'); setTimeout(() => location.reload(), 1500); return; }
+    NET.count++; got++;
+  }
+  if (S.winner >= 0) NET.done = true;
+  if (got) {
+    hiddenLoot.clear();
+    syncUnitGroups();
+    if (initial) { S.events.length = 0; rebuildAll(); } else { playEvents(); rebuildChanged(); }
+    turnStarted(initial);
+  }
+  refreshHud();
+}
+async function poll() {
+  for (;;) {
+    try {
+      const m = await api('GET', `/${NET.id}?since=${NET.count}&rev=${NET.rev}`);
+      while (falling || NET.sending) await sleep(150);   // never replay into the middle of a local animation or send
+      applyMatch(m, false);
+    } catch { await sleep(3000); }
+  }
+}
+async function submitTurn() {
+  if (NET.sending) return;
+  const turn = { n: NET.count, groups: turnGroups(S), hash: stateHash(S) };
+  NET.sending = true;
+  setMode(null); showRange(); refreshHud();
+  for (let tries = 0; ; tries++) {
+    try { await api('POST', `/${NET.id}/turns`, { token: NET.token, ...turn }); break; }
+    catch (e) {
+      if (e.status && e.status < 500 && e.status !== 429) {   // refused: our copy is wrong, start over from the server's
+        NET.done = true; NET.sending = false;
+        flash('The server refused this turn (' + e.message + '). Reloading…');
+        setTimeout(() => location.reload(), 2500);
+        return;
+      }
+      if (tries >= 2) { NET.sending = false; flash("Couldn't reach the server. Tap End turn to try again."); refreshHud(); return; }
+      await sleep(1500 * (tries + 1));
+    }
+  }
+  NET.sending = false; NET.count++;
+  if (S.winner >= 0) { NET.done = true; refreshHud(); return; }
+  endTurn(S);
+  turnStarted();
+  if (S.wnext.length) settle();
+  refreshHud();
+}
+async function startOnline() {
+  if (!location.protocol.startsWith('http')) return;    // opened as a file: hot-seat only
+  const id = new URLSearchParams(location.search).get('m');
+  $('onlineBtn').hidden = !!id;
+  if (!id) return;
+  NET.id = id;
+  $('reset').hidden = true;
+  $('netRow').hidden = false;
+  let seat = stored('bw:' + id);
+  try {
+    const path = '/' + encodeURIComponent(id);
+    let m = await api('GET', path + '?since=0');
+    if (!seat && !m.players[1]) {
+      try { const j = await api('POST', path + '/join'); seat = { team: j.team, token: j.token }; stored('bw:' + id, seat); }
+      catch { /* someone else took the seat: watch instead */ }
+      m = await api('GET', path + '?since=0');
+    }
+    if (seat) { NET.team = seat.team; NET.token = seat.token; }
+    applyMatch(m, true);
+    if (NET.team === 0 && !m.players[1] && !m.count) showShare();
+    poll();
+  } catch (e) {
+    NET.done = true;
+    flash(e.status === 404 ? 'There is no match at this link' : "Can't reach the server: " + e.message);
+    refreshHud();
+  }
 }
 
 function press(el) { el.classList.add('pressed'); }
@@ -1223,7 +1381,15 @@ document.querySelectorAll('[data-act]').forEach(el => {
 $('unitsBtn').addEventListener('pointerdown', e => { e.preventDefault(); toggleBuild(false); toggleUnits(); });
 $('buildBtn').addEventListener('pointerdown', e => { e.preventDefault(); toggleBuild(); });
 $('winUndo').addEventListener('click', () => act('undo'));
-$('winAgain').addEventListener('click', () => $('reset').dispatchEvent(new PointerEvent('pointerdown')));
+$('winAgain').addEventListener('click', () => {
+  if (!NET.id) $('reset').dispatchEvent(new PointerEvent('pointerdown'));
+  else if (!NET.done && S.winner === NET.team) act('endturn');
+  else location.href = '/';
+});
+$('onlineBtn').addEventListener('click', createMatch);
+$('shareBtn').addEventListener('click', showShare);
+$('shareGo').addEventListener('click', shareLink);
+$('shareClose').addEventListener('click', () => { $('shareView').hidden = true; });
 $('reset').addEventListener('pointerdown', e => {
   e.preventDefault();
   if (falling) return;
@@ -1516,6 +1682,7 @@ rebuildAll();
 showRange();
 refreshHud();
 requestAnimationFrame(frame);
+startOnline();
 })();
 </script>
 </body>

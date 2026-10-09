@@ -2,7 +2,8 @@
   "name": "block-wars",
   "private": true,
   "scripts": {
-    "test": "node test/replay-check.js"
+    "test": "node test/replay-check.js && node test/server-check.js && node test/online-check.js",
+    "start": "node --disable-warning=ExperimentalWarning server/server.js"
   },
   "devDependencies": {
     "eslint": "^9.14.0",

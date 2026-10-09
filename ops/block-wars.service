@@ -1,0 +1,26 @@
+[Unit]
+Description=Block Wars match server
+After=network.target
+
+[Service]
+User=blockwars
+Group=blockwars
+WorkingDirectory=/srv/block_wars
+ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning /srv/block_wars/server/server.js
+Environment=NODE_ENV=production PORT=8787 DB=/var/lib/block_wars/bw.sqlite
+StateDirectory=block_wars
+Restart=always
+RestartSec=2
+# Locked down: it can only write its own database folder.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target
