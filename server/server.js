@@ -74,6 +74,8 @@ if (!cols.includes('p0')) db.exec(`ALTER TABLE matches ADD COLUMN p0 TEXT; ALTER
   CREATE INDEX IF NOT EXISTS matches_p0 ON matches (p0); CREATE INDEX IF NOT EXISTS matches_p1 ON matches (p1);`);
 // Each match keeps the rules version it started with (sim-core RULES); older matches are version 1.
 if (!cols.includes('rules')) db.exec('ALTER TABLE matches ADD COLUMN rules INTEGER NOT NULL DEFAULT 1');
+// A player can quit: the other side wins. -1 = nobody quit.
+if (!cols.includes('quit')) db.exec('ALTER TABLE matches ADD COLUMN quit INTEGER NOT NULL DEFAULT -1');
 
 const q = {
   insertPlayer: db.prepare('INSERT INTO players (id, name, created, seen) VALUES (?, ?, ?, ?)'),
@@ -89,6 +91,9 @@ const q = {
   moveSeats1: db.prepare('UPDATE matches SET p1 = ? WHERE p1 = ? AND (p0 IS NULL OR p0 != ?)'),
   insertMatch: db.prepare('INSERT INTO matches (id, created, updated, t0, p0, p1, kind, rules) VALUES (?, ?, ?, \'\', ?, ?, ?, ?)'),
   getMatch: db.prepare('SELECT * FROM matches WHERE id = ?'),
+  quit: db.prepare('UPDATE matches SET quit = ?, winner = ?, rev = rev + 1, updated = ? WHERE id = ? AND winner < 0'),
+  cancel: db.prepare('DELETE FROM matches WHERE id = ? AND p1 IS NULL AND t1 IS NULL'),
+  cancelAfterTurns: db.prepare('DELETE FROM turns WHERE match = ?'),
   join: db.prepare('UPDATE matches SET p1 = ?, rev = rev + 1, updated = ? WHERE id = ? AND p1 IS NULL AND t1 IS NULL AND p0 != ?'),
   myGames: db.prepare(`SELECT * FROM matches WHERE p0 = ? OR p1 = ? ORDER BY (winner < 0) DESC, updated DESC LIMIT 50`),
   openGames: db.prepare('SELECT COUNT(*) n FROM matches WHERE (p0 = ? OR p1 = ?) AND winner < 0'),
@@ -247,13 +252,13 @@ const seatOf = (m, p) => !p ? -1 : m.p0 === p.id ? 0 : m.p1 === p.id ? 1 : -1;
 
 function gameSummary(m, me) {
   const team = seatOf(m, me), opp = team === 0 ? m.p1 : m.p0;
-  return { id: m.id, kind: m.kind, team, opponent: nameOf(opp), joined: !!(m.p1 || m.t1), turns: m.turns, winner: m.winner,
+  return { id: m.id, kind: m.kind, team, opponent: nameOf(opp), joined: !!(m.p1 || m.t1), turns: m.turns, winner: m.winner, quit: m.quit,
            myTurn: m.winner < 0 && m.turns % 2 === team && !!(m.p1 || m.t1 || m.turns === 0), updated: m.updated };
 }
 function matchView(m, since, me) {
   const turns = q.turnsFrom.all(m.id, since).map(r => ({ n: r.n, team: r.team, ...JSON.parse(r.body) }));
   return { id: m.id, rules: m.rules, rev: m.rev, you: seatOf(m, me), names: [nameOf(m.p0), nameOf(m.p1)], players: [true, !!(m.p1 || m.t1)],
-           winner: m.winner, count: m.turns, turns };
+           winner: m.winner, quit: m.quit, count: m.turns, turns };
 }
 function createMatch(kind, p0, p1) {
   const id = newId(6), now = Date.now();
@@ -357,6 +362,22 @@ async function handle(req, res) {
 
   const m = id && q.getMatch.get(id);
   if (!m) return send(res, 404, { error: 'no such match' });
+
+  if (req.method === 'POST' && action === 'quit') {
+    need(me);
+    const seat = seatOf(m, me);
+    if (seat < 0) throw new Fail(403, 'not a player in this match');
+    if (m.winner >= 0) throw new Fail(409, 'match is over');
+    if (!m.p1 && !m.t1) {                      // nobody joined yet: just call it off
+      q.cancelAfterTurns.run(id);
+      q.cancel.run(id);
+      notify(id);
+      return send(res, 200, { cancelled: true });
+    }
+    q.quit.run(seat, 1 - seat, now, id);
+    changed(id, seat === 0 ? m.p1 : m.p0);
+    return send(res, 200, { winner: 1 - seat });
+  }
 
   if (req.method === 'POST' && action === 'join') {
     need(me);

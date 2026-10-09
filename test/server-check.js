@@ -110,6 +110,22 @@ function vapidValid(auth, publicKey) {
     ok(!(await api('POST', '/quick', null, b)).match, 'nobody else waiting: the next search waits');
     await api('DELETE', '/quick', null, b);
     ok(!(await api('GET', '/me', null, b)).searching, 'stop looking');
+
+    // Quitting: the other side wins, the game takes no more turns; an unjoined invite is just cancelled.
+    const qurl = `/matches/${pair.match}`;
+    ok((await api('POST', `${qurl}/quit`, null, eve)).status === 403, 'a stranger cannot quit for you');
+    const qa = qm.you;
+    const quit = await api('POST', `${qurl}/quit`, null, a);
+    ok(quit.status === 200 && quit.winner === 1 - qa, 'quitting gives the win to the other side');
+    const after = await api('GET', `${qurl}?since=0`, null, b);
+    ok(after.winner === 1 - qa && after.quit === qa, 'the match shows who quit');
+    ok((await api('POST', `${qurl}/turns`, { n: 0, ...turns[0] }, qa === 0 ? a : b)).status === 409, 'no turns after a quit');
+    ok((await api('POST', `${qurl}/quit`, null, b)).status === 409, 'cannot quit a finished game');
+    const bg = (await api('GET', '/me', null, b)).games.find(g => g.id === pair.match);
+    ok(bg && bg.quit === qa && bg.winner === bg.team, 'their game list: they quit, you won');
+    const lone = await api('POST', '/matches', null, a);
+    const c = await api('POST', `/matches/${lone.id}/quit`, null, a);
+    ok(c.cancelled && (await api('GET', `/matches/${lone.id}`)).status === 404, 'quitting an unjoined invite cancels it');
   } finally {
     await stop(srv);
     pushSrv.close();

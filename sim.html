@@ -180,6 +180,13 @@ body.lobby #hud, body.lobby #controls, body.lobby #layers{display:none}
 #reset[hidden],#winUndo[hidden],#menuBtn[hidden],#cmdBtn[hidden]{display:none!important}
 #joinView{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px;color:#fff;font-weight:800;text-align:center}
 #joinView[hidden]{display:none}
+#menuView{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10;display:flex;align-items:center;justify-content:center;padding:16px}
+#menuView[hidden]{display:none}
+.msheet{background:var(--sky);border:2px solid var(--ink);border-radius:18px;padding:16px;width:100%;max-width:340px;display:flex;flex-direction:column;gap:10px}
+.msheet .mtitle{font-weight:800;font-size:18px;text-align:center;margin-bottom:2px}
+.msheet .btn{height:52px;font-size:17px}
+.msheet .btn[hidden]{display:none}
+.msheet .danger{background:var(--brk);color:#fff}
 #joinText{font-size:22px;max-width:360px}
 #shotView img{max-width:100%;max-height:72vh;border-radius:10px;border:2px solid #fff}
 </style>
@@ -269,9 +276,20 @@ body.lobby #hud, body.lobby #controls, body.lobby #layers{display:none}
   </div>
 </div>
 
+<div id="menuView" hidden>
+  <div class="msheet" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <div class="mtitle" id="mTitle">Menu</div>
+    <button class="btn" id="mLobby">Back to lobby</button>
+    <button class="btn" id="mRestart" hidden>Restart this game</button>
+    <button class="btn danger" id="mQuit" hidden>Quit game</button>
+    <button class="btn danger" id="mQuitYes" hidden>Yes, quit</button>
+    <button class="btn" id="mClose">Keep playing</button>
+  </div>
+</div>
+
 <div id="winView" hidden>
   <div id="winText">Blue wins!</div>
-  <div class="sub" style="color:#fff">The enemy base has been captured.</div>
+  <div class="sub" id="winSub" style="color:#fff">The enemy base has been captured.</div>
   <div style="display:flex;gap:10px">
     <button class="btn" id="winUndo" style="padding:10px 18px">↶ Undo</button>
     <button class="btn" id="winAgain" style="padding:10px 18px;background:var(--cmd);color:#22303b">Play again</button>
@@ -1200,7 +1218,7 @@ function refreshHud() {
   const u = selUnit();
   $('udot').style.background = hex(TEAM_COLORS[u.team]);
   $('ustate').textContent = attackMode ? 'Attack mode · tap a red-ringed enemy' : digMode ? 'Dig mode · tap a block'
-    : NET.id && !myTurn() ? (S.winner >= 0 ? 'Game over' : NET.sending ? 'Sending your turn…' : 'Waiting for ' + oppName())
+    : NET.id && !myTurn() ? (winnerNow() >= 0 ? 'Game over' : NET.sending ? 'Sending your turn…' : 'Waiting for ' + oppName())
     : u.acted ? 'Done this turn' : u.moved ? 'Moved · can still attack' : 'Ready · tap a blue tile';
   $('pos').textContent = `x${u.x} y${u.y} z${u.z}`;
   $('turn').textContent = S.turn + ' · ' + (NET.id && NET.team >= 0 ? (S.team === NET.team ? 'Your move' : oppName() + "'s move") : TEAM_NAMES[S.team] + "'s move");
@@ -1223,8 +1241,13 @@ function refreshHud() {
   $('income').textContent = '(+' + incomeOf(S, S.team) + '/turn)';
   $('buildBtn').disabled = falling || !mine || !TYPES.some(t => canBuild(S, t));
   if (!$('buildPanel').hidden) renderBuildPanel();
-  $('winView').hidden = S.winner < 0;
-  if (S.winner >= 0) $('winText').textContent = TEAM_NAMES[S.winner] + ' wins!';
+  const won = winnerNow();
+  $('winView').hidden = won < 0;
+  if (won >= 0) {
+    $('winText').textContent = NET.id && NET.team >= 0 ? (won === NET.team ? 'You win!' : 'You lose') : TEAM_NAMES[won] + ' wins!';
+    $('winSub').textContent = NET.quit < 0 ? 'The enemy base has been captured.'
+      : NET.quit === NET.team ? 'You quit the game.' : (NET.names[NET.quit] || TEAM_NAMES[NET.quit]) + ' quit the game.';
+  }
   if (NET.id) {                                  // online: a win still has to be sent; after that, no undo
     const unsent = !NET.done && S.winner === NET.team;
     $('winUndo').hidden = !unsent;
@@ -1379,7 +1402,9 @@ function turnStarted(quiet) {
 /* ---------- Online: a match on the server. Your actions stay local (undo works) until End turn sends them;
    the server replays them with the same sim-core.js and passes them on. The opponent's turns arrive the same way. ---------- */
 const GAME_NAME = 'Cube Wars';
-const NET = { id: null, team: -1, legacy: null, count: 0, rev: -1, players: [true, false], names: [null, null], sending: false, done: false };
+const NET = { id: null, team: -1, legacy: null, count: 0, rev: -1, players: [true, false], names: [null, null], sending: false, done: false,
+              winner: -1, quit: -1 };                // winner/quit from the server: a match can also end by someone quitting
+const winnerNow = () => S.winner >= 0 ? S.winner : NET.winner;
 const myTurn = () => !NET.id || (S.team === NET.team && !NET.sending && !NET.done);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const onWeb = location.protocol.startsWith('http');                    // opened as a file: hot-seat only
@@ -1458,7 +1483,8 @@ function gameRow(g) {
   const b = document.createElement('button');
   b.className = 'btn game' + (g.winner >= 0 ? ' over' : '');
   const who = g.opponent ? 'vs ' + g.opponent : g.kind === 'invite' ? 'Waiting for your friend' : 'vs ?';
-  const status = g.winner >= 0 ? (g.winner === g.team ? 'You won' : 'You lost')
+  const status = g.quit >= 0 ? (g.quit === g.team ? 'You quit' : 'They quit')
+    : g.winner >= 0 ? (g.winner === g.team ? 'You won' : 'You lost')
     : g.myTurn ? 'Your turn' : g.joined ? 'Their turn' : 'Not joined';
   b.innerHTML = '<span class="dot"></span><span class="who"></span><span class="st"></span>';
   b.querySelector('.dot').style.background = hex(TEAM_COLORS[g.team]);
@@ -1547,7 +1573,7 @@ function netLine() {
   const opp = NET.team >= 0 ? NET.names[1 - NET.team] : null;
   const you = NET.team >= 0 ? 'You are ' + TEAM_NAMES[NET.team] + (opp ? ' vs ' + opp : '') + ' · ' : 'Watching · ';
   const waitingForJoin = NET.team === 0 && !NET.players[1];
-  $('netLine').textContent = S.winner >= 0 ? you + TEAM_NAMES[S.winner] + ' won'
+  $('netLine').textContent = winnerNow() >= 0 ? you + TEAM_NAMES[winnerNow()] + ' won'
     : NET.sending ? you + 'Sending…'
     : myTurn() ? you + 'Your turn' + (waitingForJoin ? ' · no opponent yet' : '')
     : you + 'Waiting for ' + (NET.team >= 0 && opp ? opp : TEAM_NAMES[S.team]) + '…';
@@ -1567,6 +1593,7 @@ async function shareLink() {
 // Apply turns from the server that we don't have yet. Each one is replayed and hash-checked like on the server.
 function applyMatch(m, initial) {
   NET.rev = m.rev; NET.players = m.players; NET.names = m.names || NET.names;
+  if (m.quit >= 0) { NET.quit = m.quit; NET.winner = m.winner; NET.done = true; }
   let got = 0;
   for (const t of m.turns) {
     if (t.n !== NET.count) continue;
@@ -1644,6 +1671,7 @@ async function openMatch(id) {
     if (!NET.legacy) NET.team = m.you;
     S.rules = m.rules || 1;                      // the rules this match started with (the map is the same for all)
     applyMatch(m, true);
+    turnStarted(true);                           // look at your own army, even before any turn was played
     if (NET.team === 0 && !m.players[1] && !m.count) showShare();
     poll();
   } catch (e) {
@@ -1675,7 +1703,41 @@ $('lLocal').addEventListener('click', closeLobby);
 $('lNotify').addEventListener('click', async () => { if (!await enablePush(true)) flash('Notifications are not available here'); updatePushUi(); });
 $('lName').addEventListener('change', rename);
 $('lName').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
-$('menuBtn').addEventListener('click', () => { if (NET.id) location.href = '/'; else openLobby(); });
+function openMenu() {
+  const canQuit = NET.id && NET.team >= 0 && winnerNow() < 0 && !NET.done;
+  $('mTitle').textContent = 'Menu';
+  $('mQuit').hidden = !canQuit;
+  $('mQuit').textContent = NET.players[1] ? 'Quit game' : 'Cancel this game';
+  $('mQuitYes').hidden = true;
+  $('mRestart').hidden = !!NET.id;
+  $('mLobby').hidden = false;
+  $('mClose').textContent = 'Keep playing';
+  $('menuView').hidden = false;
+}
+const closeMenu = () => { $('menuView').hidden = true; };
+$('menuBtn').addEventListener('click', openMenu);
+$('mClose').addEventListener('click', closeMenu);
+$('menuView').addEventListener('click', e => { if (e.target === $('menuView')) closeMenu(); });
+$('mLobby').addEventListener('click', () => { closeMenu(); if (NET.id) location.href = '/'; else openLobby(); });
+$('mRestart').addEventListener('click', () => { closeMenu(); $('reset').dispatchEvent(new PointerEvent('pointerdown')); });
+$('mQuit').addEventListener('click', () => {       // step 2: say what quitting means, then confirm
+  const opp = oppName();
+  $('mTitle').textContent = NET.players[1] ? 'Quit this game? ' + opp + ' wins.' : 'Cancel this game? Nobody has joined yet.';
+  $('mQuitYes').textContent = NET.players[1] ? 'Yes, quit' : 'Yes, cancel it';
+  $('mQuit').hidden = $('mLobby').hidden = $('mRestart').hidden = true;
+  $('mQuitYes').hidden = false;
+});
+$('mQuitYes').addEventListener('click', async () => {
+  $('mQuitYes').disabled = true;
+  try {
+    const r = await api('POST', `/matches/${NET.id}/quit`);
+    closeMenu();
+    if (r.cancelled) { location.href = '/'; return; }
+    NET.winner = r.winner; NET.quit = NET.team; NET.done = true;
+    setMode(null); showRange(); refreshHud();
+  } catch (e) { flash(e.message); closeMenu(); }
+  $('mQuitYes').disabled = false;
+});
 setInterval(() => { if (lobbyOpen && !document.hidden) refreshLobby(); }, 20000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshLobby(); });
 

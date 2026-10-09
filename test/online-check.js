@@ -90,6 +90,7 @@ const ok = (cond, msg) => { console.log((cond ? 'ok   ' : 'FAIL ') + msg); if (!
 
     // Menu → the lobby lists the game with whose turn it is.
     await red.click('#menuBtn');
+    await red.click('#mLobby');
     await red.waitForSelector('#lGames .game');
     ok((await red.textContent('#lGames .game')).includes('Their turn') && (await red.textContent('#lGames .game')).includes('Blue Tester'),
       `Red's lobby: "${(await red.textContent('#lGames .game')).trim()}"`);
@@ -106,7 +107,23 @@ const ok = (cond, msg) => { console.log((cond ? 'ok   ' : 'FAIL ') + msg); if (!
     await Promise.all([q1.waitForURL(/\?m=/, { timeout: 30000 }), q2.waitForURL(/\?m=/, { timeout: 30000 })]);
     ok(q1.url() === q2.url(), 'quick play: both players land in the same match');
     ok(await waitLine(q1, 'You are') && await waitLine(q2, 'You are'), `seated: "${await line(q1)}" / "${await line(q2)}"`);
+    for (const p of [q1, q2]) {                // each player looks at their own army from the start
+      const mine = (await line(p)).includes('Blue') ? '59, 130, 196' : '224, 69, 58';
+      ok((await p.evaluate(() => document.getElementById('udot').style.background)).includes(mine), `own unit selected: ${await p.textContent('#uname')} (${(await line(p)).slice(0, 12)})`);
+    }
     await q1.screenshot({ path: path.join(__dirname, 'out', 'quick-match.png') });
+
+    // Menu → Quit game → confirm: the quitter loses, the other side sees who quit.
+    await q1.click('#menuBtn');
+    await q1.click('#mQuit');
+    ok((await q1.textContent('#mTitle')).startsWith('Quit this game?'), `quit asks first: "${await q1.textContent('#mTitle')}"`);
+    await q1.click('#mQuitYes');
+    await q1.waitForSelector('#winView:not([hidden])', { timeout: 10000 });
+    ok((await q1.textContent('#winText')) === 'You lose' && (await q1.textContent('#winSub')).includes('You quit'), `quitter sees: "${await q1.textContent('#winText')} ${await q1.textContent('#winSub')}"`);
+    const seen = await q2.waitForSelector('#winView:not([hidden])', { timeout: 30000 }).then(() => true, () => false);
+    ok(seen && (await q2.textContent('#winText')) === 'You win!' && (await q2.textContent('#winSub')).includes('quit the game')
+      && (await q2.textContent('#ustate')) === 'Game over', `opponent sees: "${await q2.textContent('#winText')} ${await q2.textContent('#winSub')}"`);
+    await q2.screenshot({ path: path.join(__dirname, 'out', 'quit.png') });
     }
     await red.screenshot({ path: path.join(__dirname, 'out', 'lobby.png') });
     await blue.screenshot({ path: path.join(__dirname, 'out', 'online-blue.png') });
