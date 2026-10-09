@@ -44,6 +44,11 @@ const ok = (cond, msg) => { console.log((cond ? 'ok   ' : 'FAIL ') + msg); if (!
     ok(await waitLine(blue, 'Your turn'), `Blue: "${await line(blue)}"`);
 
     await red.goto(link.replace(/^https?:\/\/[^/]+/, site));
+    await red.waitForSelector('#joinView:not([hidden])', { timeout: 15000 });
+    ok((await red.textContent('#joinText')).includes('Blue Tester'), `opening the link asks first: "${await red.textContent('#joinText')}"`);
+    await blue.waitForTimeout(1500);
+    ok((await line(blue)).includes('no opponent yet'), 'just opening the link does not take the seat');
+    await red.click('#joinYes');
     ok(await waitLine(red, 'Waiting for Blue Tester'), `Red joins and sees the name: "${await line(red)}"`);
     await red.keyboard.press('e');
     ok((await red.textContent('#status')).includes('Not your turn'), 'Red cannot end Blue\'s turn');
@@ -54,6 +59,9 @@ const ok = (cond, msg) => { console.log((cond ? 'ok   ' : 'FAIL ') + msg); if (!
     ok((await blue.textContent('#acount')).startsWith('1'), 'Blue builds a soldier (1 action)');
     await blue.keyboard.press('e');
     ok(await waitLine(blue, 'Waiting for '), `Blue sent the turn: "${await line(blue)}"`);
+    ok((await blue.textContent('#uname')).startsWith('Soldier') && (await blue.evaluate(() => document.getElementById('udot').style.background)).includes('59, 130, 196'),
+      `after End turn Blue still looks at a Blue unit (${await blue.textContent('#uname')})`);
+    ok((await blue.textContent('#ustate')).includes('Waiting for'), `Blue's status: "${await blue.textContent('#ustate')}"`);
     ok(await waitLine(red, 'Your turn'), `Red receives it: "${await line(red)}"`);
     ok(await hash(red) === await hash(blue), `same hash on both screens after turn 1 (${await hash(red)})`);
 
@@ -75,8 +83,10 @@ const ok = (cond, msg) => { console.log((cond ? 'ok   ' : 'FAIL ') + msg); if (!
     // A third browser can only watch.
     const third = await open();
     await third.goto(link.replace(/^https?:\/\/[^/]+/, site));
+    if (await third.waitForSelector('#joinView:not([hidden])', { timeout: 3000 }).then(() => true, () => false)) await third.click('#joinNo');
     ok(await waitLine(third, 'Watching'), `a third visitor watches: "${await line(third)}"`);
     ok(!(await blue.isVisible('#reset')) && !(await blue.isVisible('#hashBox')), 'no Reset button or debug hash inside a match');
+    ok(!(await blue.isVisible('#cmdBtn')), 'no Commander button without ?debug');
 
     // Menu → the lobby lists the game with whose turn it is.
     await red.click('#menuBtn');

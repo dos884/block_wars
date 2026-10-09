@@ -177,7 +177,10 @@ body.lobby #hud, body.lobby #controls, body.lobby #layers{display:none}
 .lfoot [hidden]{display:none}
 #hashBox[hidden]{display:none}
 #netRow[hidden]{display:none}
-#reset[hidden],#winUndo[hidden],#menuBtn[hidden]{display:none!important}
+#reset[hidden],#winUndo[hidden],#menuBtn[hidden],#cmdBtn[hidden]{display:none!important}
+#joinView{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px;color:#fff;font-weight:800;text-align:center}
+#joinView[hidden]{display:none}
+#joinText{font-size:22px;max-width:360px}
 #shotView img{max-width:100%;max-height:72vh;border-radius:10px;border:2px solid #fff}
 </style>
 </head>
@@ -198,7 +201,7 @@ body.lobby #hud, body.lobby #controls, body.lobby #layers{display:none}
     <button class="btn" id="menuBtn" style="padding:4px 10px;font-size:13px;box-shadow:0 3px 0 var(--ink);display:block;margin-left:auto" hidden>☰ Menu</button>
     <button class="btn" id="reset" style="margin-top:6px;padding:4px 10px;font-size:13px;box-shadow:0 3px 0 var(--ink);display:block;margin-left:auto">Reset</button>
     <button class="btn" data-act="view" aria-pressed="false" style="margin-top:6px;padding:4px 10px;font-size:13px;box-shadow:0 3px 0 var(--ink);display:block;margin-left:auto">1st person</button>
-    <button class="btn" data-act="commander" style="margin-top:6px;padding:4px 10px;font-size:13px;box-shadow:0 3px 0 var(--ink);display:block;margin-left:auto">Commander</button>
+    <button class="btn" id="cmdBtn" data-act="commander" style="margin-top:6px;padding:4px 10px;font-size:13px;box-shadow:0 3px 0 var(--ink);display:block;margin-left:auto">Commander</button>
   </div>
 </div>
 
@@ -254,6 +257,15 @@ body.lobby #hud, body.lobby #controls, body.lobby #layers{display:none}
   <div style="display:flex;gap:10px">
     <button class="btn" id="shareGo" style="padding:10px 18px;background:var(--cmd);color:#22303b">Share link</button>
     <button class="btn" id="shareClose" style="padding:10px 18px">Close</button>
+  </div>
+</div>
+
+<div id="joinView" hidden>
+  <div id="joinText">You're invited to a game</div>
+  <div class="sub" style="color:#fff;font-weight:600">You'll play Red. Blue moves first.</div>
+  <div style="display:flex;gap:10px">
+    <button class="btn" id="joinYes" style="padding:12px 20px;background:var(--cmd);color:#22303b">Join as Red</button>
+    <button class="btn" id="joinNo" style="padding:12px 20px">Just watch</button>
   </div>
 </div>
 
@@ -1014,7 +1026,7 @@ function unitAtScreen(cx, cy) {
   const r = canvas.getBoundingClientRect();
   ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
-  const boxes = unitGroups.filter((g, k) => k < S.units.length && k !== sel && g.userData.sprite.visible && S.units[k].team === S.team && !S.units[k].dead).map(g => g.userData.hit);
+  const boxes = unitGroups.filter((g, k) => k < S.units.length && k !== sel && g.userData.sprite.visible && S.units[k].team === viewTeam() && !S.units[k].dead).map(g => g.userData.hit);
   const h = raycaster.intersectObjects([...boxes, ...chunkMeshes], false)[0];
   if (!h || h.object.userData.chunk) return -1;
   return unitGroups.findIndex(g => g.userData.hit === h.object);
@@ -1119,7 +1131,7 @@ function renderUnitsPanel() {
   const panel = $('unitsPanel');
   panel.innerHTML = '';
   S.units.forEach((u, k) => {
-    if (u.team !== S.team || u.dead) return;
+    if (u.team !== viewTeam() || u.dead) return;
     const b = document.createElement('button');
     b.className = 'btn urow' + (k === sel ? ' cur' : '');
     b.innerHTML = '<span class="dot" style="background:' + hex(TEAM_COLORS[u.team]) + '"></span>' + unitName(u) +
@@ -1188,9 +1200,10 @@ function refreshHud() {
   const u = selUnit();
   $('udot').style.background = hex(TEAM_COLORS[u.team]);
   $('ustate').textContent = attackMode ? 'Attack mode · tap a red-ringed enemy' : digMode ? 'Dig mode · tap a block'
+    : NET.id && !myTurn() ? (S.winner >= 0 ? 'Game over' : NET.sending ? 'Sending your turn…' : 'Waiting for ' + oppName())
     : u.acted ? 'Done this turn' : u.moved ? 'Moved · can still attack' : 'Ready · tap a blue tile';
   $('pos').textContent = `x${u.x} y${u.y} z${u.z}`;
-  $('turn').textContent = S.turn + ' · ' + TEAM_NAMES[S.team] + "'s move";
+  $('turn').textContent = S.turn + ' · ' + (NET.id && NET.team >= 0 ? (S.team === NET.team ? 'Your move' : oppName() + "'s move") : TEAM_NAMES[S.team] + "'s move");
   $('uname').textContent = unitName(u) + ' · ' + u.hp + ' HP';
   $('invwood').textContent = S.inv[WOOD];
   syncLoot();
@@ -1291,7 +1304,7 @@ function act(a) {
     let k = -1;
     for (let step = 1; step <= S.units.length; step++) {
       const j = (sel + step) % S.units.length, v = S.units[j];
-      if (j !== sel && v.team === S.team && !v.dead && !v.moved) { k = j; break; }
+      if (j !== sel && v.team === viewTeam() && !v.dead && !v.moved) { k = j; break; }
     }
     if (k >= 0) selectUnit(k);
     else flash(u.moved ? 'All units have moved' : 'No other unit is ready');
@@ -1348,14 +1361,21 @@ function act(a) {
   refreshHud();
 }
 // After End turn (yours or the opponent's): select the side to move and say what happened.
+// Whose units the screen follows: online, always your own; in pass & play, whoever is to move.
+const viewTeam = () => NET.id && NET.team >= 0 ? NET.team : S.team;
+const oppName = () => NET.id && NET.team >= 0 ? NET.names[1 - NET.team] || TEAM_NAMES[1 - NET.team] : TEAM_NAMES[S.team];
 function turnStarted(quiet) {
   setMode(null);
-  const first = S.units.findIndex(v => v.team === S.team && !v.dead);
-  if (first >= 0 && first !== sel) selectUnit(first); else { resetWalker(); showRange(); }
+  const vt = viewTeam();
+  if (sel < S.units.length && S.units[sel].team === vt && !S.units[sel].dead) { resetWalker(); showRange(); }
+  else {
+    const first = S.units.findIndex(v => v.team === vt && !v.dead);
+    if (first >= 0 && first !== sel) selectUnit(first); else { resetWalker(); showRange(); }
+  }
   const hurt = (S.drowned || []).map(id => unitName(S.units[id]) + (S.units[id].dead ? ' drowned' : ' is drowning'));
-  if (!quiet) flash(hurt.length ? hurt.join(', ') : NET.id && S.team === NET.team ? 'Your turn' : TEAM_NAMES[S.team] + "'s turn");
+  if (!quiet) flash(hurt.length ? hurt.join(', ') : !NET.id ? TEAM_NAMES[S.team] + "'s turn"
+    : S.team === NET.team ? 'Your turn' : 'Waiting for ' + oppName());
 }
-
 /* ---------- Online: a match on the server. Your actions stay local (undo works) until End turn sends them;
    the server replays them with the same sim-core.js and passes them on. The opponent's turns arrive the same way. ---------- */
 const GAME_NAME = 'Cube Wars';
@@ -1363,6 +1383,7 @@ const NET = { id: null, team: -1, legacy: null, count: 0, rev: -1, players: [tru
 const myTurn = () => !NET.id || (S.team === NET.team && !NET.sending && !NET.done);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const onWeb = location.protocol.startsWith('http');                    // opened as a file: hot-seat only
+const DEBUG = !onWeb || new URLSearchParams(location.search).has('debug');   // dev tools: state hash, Commander camera
 function stored(key, value) {
   try {
     if (value === undefined) return JSON.parse(localStorage.getItem(key));
@@ -1597,6 +1618,15 @@ async function submitTurn() {
   if (S.wnext.length) settle();
   refreshHud();
 }
+function askToJoin(host) {
+  $('joinText').textContent = host ? host + ' invited you to a game' : "You're invited to a game";
+  $('joinView').hidden = false;
+  return new Promise(done => {
+    const pick = yes => { $('joinView').hidden = true; done(yes); };
+    $('joinYes').onclick = () => pick(true);
+    $('joinNo').onclick = () => pick(false);
+  });
+}
 async function openMatch(id) {
   NET.id = id;
   $('reset').hidden = true;
@@ -1606,8 +1636,9 @@ async function openMatch(id) {
     const path = '/matches/' + encodeURIComponent(id);
     let m = await api('GET', path + '?since=0');
     if (legacy && legacy.token) { NET.team = legacy.team; NET.legacy = legacy.token; }
-    else if (m.you < 0 && !m.players[1]) {
-      try { await api('POST', path + '/join'); } catch { /* someone else took the seat: watch instead */ }
+    else if (m.you < 0 && !m.players[1] && await askToJoin(m.names[0])) {
+      // Only a tap takes the seat: link previews and stray browser tabs must never join by just opening the link.
+      try { await api('POST', path + '/join'); } catch { flash('Someone else took that seat. You can watch.'); }
       m = await api('GET', path + '?since=0');
     }
     if (!NET.legacy) NET.team = m.you;
@@ -1621,9 +1652,10 @@ async function openMatch(id) {
   }
 }
 async function startOnline() {
-  if (!onWeb) { $('hashBox').hidden = false; return; }
+  $('hashBox').hidden = !DEBUG;
+  $('cmdBtn').hidden = !DEBUG;
+  if (!onWeb) return;
   $('menuBtn').hidden = false;
-  if (new URLSearchParams(location.search).has('debug')) $('hashBox').hidden = false;
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   const id = new URLSearchParams(location.search).get('m');
   if (!id) openLobby();
@@ -1689,7 +1721,7 @@ window.addEventListener('keydown', e => {
     cmdKeys[k] = true; e.preventDefault(); return;
   }
   if (e.repeat) return;
-  if (k === 'c') { act('commander'); return; }
+  if (k === 'c') { if (DEBUG) act('commander'); return; }
   if (k === 'z') { act('undo'); return; }
   if (k === 'k') { act('capture'); return; }
   if (k === 'b') { toggleBuild(); return; }
