@@ -1,0 +1,2242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>sim</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --sky:#bcd6e8; --ink:#22303b; --btn:#f7fafc; --panel:rgba(247,250,252,.82);
+  --muted:#5a6b78; --cmd:#ff7a1a; --brk:#e0453a;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --sky:#17212b; --ink:#e6edf3; --btn:#26323d; --panel:rgba(38,50,61,.82); --muted:#9fb0bd;
+  }
+}
+:root[data-theme="dark"]{
+  --sky:#17212b; --ink:#e6edf3; --btn:#26323d; --panel:rgba(38,50,61,.82); --muted:#9fb0bd;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{
+  height:100%;margin:0;overflow:hidden;background:var(--sky);color:var(--ink);
+  font-family:"Nunito",ui-rounded,system-ui,-apple-system,"Segoe UI",sans-serif;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+
+#hud{
+  position:fixed;top:0;left:0;right:0;pointer-events:none;
+  padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 0;
+  display:flex;justify-content:space-between;align-items:flex-start;gap:8px;
+}
+.chip{
+  pointer-events:auto;background:var(--panel);border:2px solid var(--ink);border-radius:12px;
+  padding:6px 10px;font-size:13px;line-height:1.35;font-weight:600;
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+}
+.chip b{font-weight:800}
+.chip .sub{color:var(--muted)}
+#status{color:var(--brk);font-weight:800;min-height:1.35em}
+
+#controls{
+  position:fixed;left:0;right:0;bottom:0;pointer-events:none;
+  padding:0 12px calc(env(safe-area-inset-bottom,0px) + 12px);
+  display:flex;justify-content:space-between;align-items:flex-end;gap:10px;
+}
+.btn{
+  pointer-events:auto;appearance:none;-webkit-appearance:none;
+  border:2px solid var(--ink);background:var(--btn);color:var(--ink);
+  font:inherit;font-weight:800;font-size:15px;border-radius:14px;
+  box-shadow:0 4px 0 var(--ink);touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+  cursor:pointer;padding:0;transition:transform .05s,box-shadow .05s;
+}
+.btn.pressed{transform:translateY(4px);box-shadow:0 0 0 var(--ink)}
+.btn:focus-visible{outline:3px solid var(--cmd);outline-offset:2px}
+.btn:disabled{opacity:.45}
+
+.pad{display:flex;flex-direction:column;align-items:center;gap:10px}
+.dpad{display:grid;grid-template-columns:44px 80px 44px;grid-template-rows:44px 82px 44px;gap:5px}
+.dpad .btn{font-size:20px}
+.dpad [data-act="w"]{grid-column:2;grid-row:1}
+.dpad [data-act="a"]{grid-column:1;grid-row:2}
+.dpad [data-act="d"]{grid-column:3;grid-row:2}
+.dpad [data-act="s"]{grid-column:2;grid-row:3}
+.dpad .vstack{grid-column:2;grid-row:2;display:grid;grid-template-rows:1fr 1fr;gap:4px}
+.dpad .vt{font-size:14px;border-radius:10px;box-shadow:0 3px 0 var(--ink)}
+.dpad .vt.pressed{transform:translateY(3px);box-shadow:0 0 0 var(--ink)}
+.dpad .vt.on{background:var(--cmd);color:#22303b}
+
+.acts{display:flex;flex-direction:column;align-items:stretch;gap:10px;width:min(46vw,190px)}
+.swatches{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.sw{height:40px;border-radius:10px}
+.sw.sel{outline:3px solid var(--cmd);outline-offset:2px}
+.aim{height:44px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.big{height:60px;font-size:16px}
+.place{background:var(--cmd);color:#22303b}
+.break{background:var(--brk);color:#fff}
+
+@media (prefers-reduced-motion:reduce){.btn{transition:none}}
+:root{--sel:#ff7a1a}
+.chip.left{position:relative}
+.ubtn{padding:4px 10px;font-size:14px;box-shadow:0 3px 0 var(--ink);display:inline-flex;align-items:center;gap:6px;margin-bottom:4px}
+.dot{width:12px;height:12px;border-radius:50%;border:2px solid var(--ink);display:inline-block;flex:none}
+#unitsPanel{position:absolute;top:calc(100% + 6px);left:0;display:flex;flex-direction:column;gap:6px;min-width:180px;z-index:5}
+#unitsPanel[hidden]{display:none}
+.urow{display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:15px;box-shadow:0 3px 0 var(--ink);text-align:left;justify-content:flex-start}
+.urow .sub{margin-left:auto;font-size:12px}
+.urow.cur{outline:3px solid var(--cmd);outline-offset:1px}
+#controls .acts{flex:1;min-width:0;max-width:230px;align-items:stretch;margin-left:auto}
+.confirm{height:60px;min-width:0;font-size:18px;background:var(--cmd);color:#22303b}
+.dig{height:46px;min-width:0;font-size:15px}
+#layers{position:fixed;right:calc(12px + env(safe-area-inset-right,0px));top:30%;display:flex;flex-direction:column;align-items:center;gap:6px;z-index:4}
+.lb{width:54px;height:46px;font-size:18px}
+.lb.auto{font-size:13px}
+.lb.auto.on{background:var(--cmd);color:#22303b}
+#layerTxt{font-size:12px;padding:4px 6px;text-align:center;min-width:54px;font-weight:800}
+.unitswrap{position:relative;pointer-events:auto;align-self:flex-end;display:flex;flex-direction:column;align-items:stretch;gap:8px;width:112px;flex:none}
+.nextbtn{height:48px;min-width:0;font-size:16px;padding:0 10px}
+.unitsbig{height:56px;min-width:0;font-size:17px;padding:0 10px}
+#unitsPanel{top:auto;bottom:calc(100% + 10px)}
+#buildPanel{position:absolute;bottom:calc(100% + 10px);left:0;display:flex;flex-direction:column;gap:6px;min-width:210px;z-index:5}
+#buildPanel[hidden]{display:none}
+#winView{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:8;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#fff;text-align:center;padding:16px}
+#winView[hidden]{display:none}
+#winText{font-size:34px;font-weight:800}
+.dig.on{background:var(--brk);color:#fff}
+.endturn{height:42px;min-width:0;font-size:15px}
+.undorow{display:flex;align-items:center;gap:6px}
+.undorow .btn{height:40px;flex:1;font-size:13px;min-width:0;padding:0 4px;white-space:nowrap}
+#acount{font-size:11px;font-weight:800;flex:none;text-align:center;padding:4px 5px;white-space:nowrap}
+.stick{position:fixed;bottom:calc(22px + env(safe-area-inset-bottom,0px));width:140px;height:140px;border-radius:50%;
+  border:2px solid var(--ink);background:var(--panel);touch-action:none;z-index:6;opacity:.6}
+.stick.live{opacity:.9}
+.stick .knob{position:absolute;width:58px;height:58px;border-radius:50%;background:var(--cmd);border:2px solid var(--ink);left:39px;top:39px;pointer-events:none}
+#stickMove{left:calc(22px + env(safe-area-inset-left,0px))}
+#stickLook{right:calc(22px + env(safe-area-inset-right,0px))}
+#cmdExit{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);right:12px;padding:6px 12px;font-size:14px;z-index:6}
+body.commander #hud, body.commander #controls, body.commander #layers{display:none}
+body:not(.commander) .cmdui{display:none}
+#shotBtn{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);left:12px;padding:6px 14px;font-size:14px;z-index:6}
+#shotFlash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:9;transition:opacity .25s}
+#shotView{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px;color:#fff;font-weight:800;text-align:center}
+#shotView[hidden]{display:none}
+#shotView img{max-width:100%;max-height:72vh;border-radius:10px;border:2px solid #fff}
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="3D world view. Tap a blue tile to move the selected unit. Swipe to rotate the camera, pinch to zoom."></canvas>
+
+<div id="hud">
+  <div class="chip left">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px"><span class="dot" id="udot"></span><b id="uname">Unit</b></div>
+    <div class="sub"><span id="ustate">Ready</span> · <span id="pos"></span></div>
+    <div class="sub">Turn <b id="turn">1</b> · Wood <b id="invwood">0</b></div>
+    <div class="sub">Gold <b id="gold">0</b> <span id="income"></span></div>
+    <div id="status"></div>
+  </div>
+  <div class="chip" style="text-align:right">
+    <div class="sub">State hash</div>
+    <div><b id="hash">--------</b></div>
+    <button class="btn" id="reset" style="margin-top:6px;padding:4px 10px;font-size:13px;box-shadow:0 3px 0 var(--ink)">Reset</button>
+    <button class="btn" data-act="view" aria-pressed="false" style="margin-top:6px;padding:4px 10px;font-size:13px;box-shadow:0 3px 0 var(--ink);display:block;margin-left:auto">1st person</button>
+    <button class="btn" data-act="commander" style="margin-top:6px;padding:4px 10px;font-size:13px;box-shadow:0 3px 0 var(--ink);display:block;margin-left:auto">Commander</button>
+  </div>
+</div>
+
+
+<div id="layers" role="group" aria-label="View layer">
+  <button class="btn lb" data-act="layerUp" aria-label="Show one layer higher">▲</button>
+  <div id="layerTxt" class="chip">All</div>
+  <button class="btn lb" data-act="layerDown" aria-label="Show one layer lower">▼</button>
+  <button class="btn lb auto on" data-act="layerAuto" aria-pressed="true">Auto</button>
+</div>
+
+<div class="cmdui stick" id="stickMove" role="application" aria-label="Fly: drag to move"><div class="knob"></div></div>
+<div class="cmdui stick" id="stickLook" role="application" aria-label="Look: drag to turn"><div class="knob"></div></div>
+<button class="cmdui btn" id="cmdExit" data-act="commander">Exit commander</button>
+<button class="cmdui btn" id="shotBtn" aria-label="Take a screenshot">📷 Screenshot</button>
+<div id="shotFlash" aria-hidden="true"></div>
+<div id="shotView" hidden>
+  <div>Long-press the picture to save it</div>
+  <img id="shotImg" alt="Screenshot of the game view">
+  <button class="btn" id="shotClose" style="padding:8px 18px;color:var(--ink)">Close</button>
+</div>
+
+<div id="winView" hidden>
+  <div id="winText">Blue wins!</div>
+  <div class="sub" style="color:#fff">The enemy base has been captured.</div>
+  <div style="display:flex;gap:10px">
+    <button class="btn" id="winUndo" style="padding:10px 18px">↶ Undo</button>
+    <button class="btn" id="winAgain" style="padding:10px 18px;background:var(--cmd);color:#22303b">Play again</button>
+  </div>
+</div>
+
+<div id="controls">
+  <div class="unitswrap">
+    <div id="unitsPanel" hidden></div>
+    <div id="buildPanel" hidden></div>
+    <button class="btn nextbtn" id="buildBtn" aria-haspopup="true" aria-expanded="false" aria-controls="buildPanel">Build ▴</button>
+    <button class="btn unitsbig" id="unitsBtn" aria-haspopup="true" aria-expanded="false" aria-controls="unitsPanel">Units ▴</button>
+    <button class="btn nextbtn" data-act="next" aria-label="Select the next unit that hasn't moved">Next ▸</button>
+  </div>
+  <div class="acts">
+    <div class="undorow">
+      <button class="btn" data-act="undo" aria-label="Undo last action">↶ Undo</button>
+      <span id="acount" class="chip">0 actions</span>
+      <button class="btn" data-act="redo" aria-label="Redo">Redo ↷</button>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn dig" data-act="attack" aria-pressed="false" style="min-width:0;flex:1">Attack</button>
+      <button class="btn dig" data-act="dig" aria-pressed="false" style="min-width:0;flex:1">Dig</button>
+      <button class="btn dig" data-act="capture" style="min-width:0;flex:1">Capture</button>
+    </div>
+    <button class="btn confirm" data-act="confirm">Confirm move</button>
+    <button class="btn endturn" data-act="endturn">End turn</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+'use strict';
+
+/* =========================================================
+   SIM — deterministic, integer-only. Units live on grid cells.
+   Each turn a unit can move to any cell in its move range, once.
+   (Walking inside the range is a client-side visual; only the confirmed cell is real.)
+   ========================================================= */
+const W = 96, D = 96, H = 40;                  // the bases are ~5 turns apart at 6 tiles per turn
+const WD = W * D, N = W * D * H;
+const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, WOOD = 4, BEDROCK = 5, LEAVES = 6;
+const SEED = 1;
+
+const idx = (x, y, z) => x + z * W + y * WD;
+const inGrid = (x, y, z) => x >= 0 && x < W && z >= 0 && z < D && y >= 0 && y < H;
+
+function mix(a) {
+  a = Math.imul(a ^ (a >>> 16), 0x45d9f3b);
+  a = Math.imul(a ^ (a >>> 16), 0x45d9f3b);
+  return (a ^ (a >>> 16)) >>> 0;
+}
+const rnd = (a, b, c) => mix(Math.imul(a, 73856093) ^ Math.imul(b, 19349663) ^ Math.imul(c, 83492791));
+
+function generate(seed, w) {
+  const g = new Uint8Array(N);
+  const S = 14;                                 // hill size
+  const heights = new Int32Array(WD);
+  for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
+    const ix = (x / S) | 0, iz = (z / S) | 0, fx = x % S, fz = z % S;
+    const a = rnd(ix, iz, seed) % 7, b = rnd(ix + 1, iz, seed) % 7;
+    const c = rnd(ix, iz + 1, seed) % 7, d = rnd(ix + 1, iz + 1, seed) % 7;
+    const h = ((a * (S - fx) * (S - fz) + b * fx * (S - fz) + c * (S - fx) * fz + d * fx * fz) / (S * S)) | 0;
+    const top = 28 + h;                         // surface at 28..34: ~30 layers of underground to dig
+    heights[x + z * W] = top;
+    for (let y = 0; y < top; y++) {
+      g[idx(x, y, z)] = y === 0 ? BEDROCK : y < top - 3 ? STONE : y < top - 1 ? DIRT : GRASS;
+    }
+  }
+  // Demo bridge near spawn: a wood deck on 4 wood pillars, gaps of 4 (wood reach 3 holds up to 6).
+  // Break an inner pillar and the gap becomes 9, so the middle of that span crumbles.
+  const BZ = (D >> 1) + 16, BX0 = (W >> 1) - 16, BX1 = BX0 + 30, PILLARS = [0, 5, 10, 15, 20, 25, 30].map(k => BX0 + k);
+  let maxH = 0;
+  for (let x = BX0; x <= BX1; x++) maxH = Math.max(maxH, heights[x + BZ * W]);
+  const deckY = maxH + 3;
+  for (const px of PILLARS) for (let y = heights[px + BZ * W]; y <= deckY; y++) g[idx(px, y, BZ)] = WOOD;
+  for (let x = BX0; x <= BX1; x++) g[idx(x, deckY, BZ)] = WOOD;
+
+  // Demo reservoir north of spawn: a stone basin raised on the hill, full of water,
+  // with a wooden dam on its south wall and a stone staircase (spillway) leading down from it.
+  const cx = W >> 1, cz = D >> 1;
+  const LX0 = cx - 10, LX1 = cx + 10, LZ0 = cz - 32, LZ1 = cz - 20;         // water inside
+  let top = 0;
+  for (let z = LZ0 - 1; z <= LZ1 + 1; z++) for (let x = LX0 - 1; x <= LX1 + 1; x++) top = Math.max(top, heights[x + z * W]);
+  const F = Math.min(top + 1, H - 8);                                        // lake floor (first water layer)
+  const RIM = F + 5, WATER_TOP = F + 3;                                       // rim top, top water layer
+  for (let z = LZ0 - 1; z <= LZ1 + 1; z++) for (let x = LX0 - 1; x <= LX1 + 1; x++) {
+    const inside = x >= LX0 && x <= LX1 && z >= LZ0 && z <= LZ1;
+    for (let y = 1; y < H; y++) {
+      const i = idx(x, y, z);
+      if (y < F) { if (!g[i]) g[i] = STONE; }
+      else if (inside) { g[i] = AIR; if (y <= WATER_TOP) w[i] = WFULL; }
+      else if (y <= RIM) g[i] = STONE;
+    }
+  }
+  const DZ = LZ1 + 1;                                                        // dam: the middle of the south wall, in wood
+  for (let x = cx - 6; x <= cx + 6; x++) for (let y = F; y <= RIM; y++) g[idx(x, y, DZ)] = WOOD;
+  for (let k = 0; k < 30; k++) {                                             // apron at lake-floor level, then steps down
+    const z = DZ + 1 + k, sy = k < 2 ? F - 1 : F - 1 - (k - 1);
+    if (z >= D - 1) break;
+    let any = false;
+    for (let x = cx - 6; x <= cx + 6; x++) {
+      if (sy < heights[x + z * W]) continue;
+      any = true;
+      for (let y = 1; y <= sy; y++) if (!g[idx(x, y, z)]) g[idx(x, y, z)] = STONE;
+    }
+    if (!any) break;
+  }
+
+  // Trees: trunks of wood with a leaf canopy — good for testing collapses.
+  let placed = 0, tries = 0;
+  const trunks = [];
+  while (placed < 40 && tries < 3000) {
+    tries++;
+    const r = rnd(tries, placed, seed + 99);
+    const x = 2 + (r % (W - 4)), z = 2 + ((r >>> 8) % (D - 4));
+    if (UNIT_SPAWNS.some(([, ux, uz]) => Math.abs(ux - x) <= 2 && Math.abs(uz - z) <= 2)) continue;   // keep spawns clear
+    if (BUILDING_SPOTS.some(([bx, bz]) => Math.abs(bx - x) <= 2 && Math.abs(bz - z) <= 2)) continue;   // keep buildings clear
+    if (trunks.some(([tx, tz]) => Math.max(Math.abs(tx - x), Math.abs(tz - z)) < 4)) continue; // canopies must not touch
+    if (Math.abs(z - BZ) <= 2 && x >= BX0 - 2 && x <= BX1 + 2) continue;                        // keep clear of the bridge
+    if (x >= cx - 14 && x <= cx + 14 && z >= LZ0 - 4 && z <= cz - 2) continue;                   // keep clear of the reservoir
+    trunks.push([x, z]);
+    const base = heights[x + z * W];
+    for (let t = 0; t < 3; t++) g[idx(x, base + t, z)] = WOOD;
+    const leaf = (X, Y, Z) => { if (inGrid(X, Y, Z) && g[idx(X, Y, Z)] === AIR) g[idx(X, Y, Z)] = LEAVES; };
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      leaf(x + dx, base + 2, z + dz);
+      leaf(x + dx, base + 3, z + dz);
+    }
+    leaf(x, base + 4, z); leaf(x + 1, base + 4, z); leaf(x - 1, base + 4, z);
+    leaf(x, base + 4, z + 1); leaf(x, base + 4, z - 1);
+    placed++;
+  }
+  return g;
+}
+
+const TEAM_NAMES = ['Blue', 'Red'];
+const TEAM_COLORS = [0x3b82c4, 0xe0453a];
+const MAX_HP = 10;
+
+/* ---------- Unit types: one table, so they're easy to tune (and later, to mod) ---------- */
+const TYPES = ['soldier', 'spearman', 'knight', 'archer', 'builder'];
+const UNIT_TYPES = {
+  soldier:  { label: 'Soldier',  move: 6, cost: 100, dig: 'soft', capture: true },
+  spearman: { label: 'Spearman', move: 6, cost: 150, dig: 'soft', capture: true },
+  knight:   { label: 'Knight',   move: 10, cost: 300, dig: 'none', capture: false, noClimb: true, tall: true },
+  archer:   { label: 'Archer',   move: 6, cost: 200, dig: 'soft', capture: true, ranged: true },
+  builder:  { label: 'Builder',  move: 6, cost: 150, dig: 'hard', capture: true },
+};
+// Base damage (out of 10 HP) by attacker row and defender column, before scaling by the attacker's health.
+// Soldier beats spearman, spearman beats knight, knight beats soldier.
+const DAMAGE = {
+  //          soldier spearman knight archer builder
+  soldier:  { soldier: 5, spearman: 7, knight: 3, archer: 6, builder: 7 },
+  spearman: { soldier: 3, spearman: 5, knight: 7, archer: 6, builder: 7 },
+  knight:   { soldier: 7, spearman: 3, knight: 5, archer: 8, builder: 8 },
+  archer:   { soldier: 4, spearman: 4, knight: 3, archer: 5, builder: 6 },
+  builder:  { soldier: 2, spearman: 2, knight: 1, archer: 2, builder: 3 },
+};
+const SOFT = [0, 1, 1, 0, 1, 0, 1];             // grass, dirt, wood, leaves: infantry can dig these
+const unitName = u => UNIT_TYPES[u.type].label + ' ' + (u.id + 1);
+
+/* ---------- Buildings: villages give gold, each team's base builds units; capturing the enemy base wins ---------- */
+const CAPTURE_PTS = 20, INCOME = 100, START_GOLD = 300;
+const BASE_X = 20;                               // bases sit 20 tiles either side of the centre: 40 apart
+const VILLAGE_OFFSETS = [[14, 4], [28, -20], [8, 28], [32, 24]];     // mirrored left/right: 8 villages
+const BUILDING_SPOTS = (() => {                 // [x, z, kind, owner]
+  const cx = W >> 1, cz = D >> 1, out = [[cx - BASE_X, cz, 'base', 0], [cx + BASE_X, cz, 'base', 1]];
+  for (const [d, dz] of VILLAGE_OFFSETS) out.push([cx - d, cz + dz, 'village', -1], [cx + d, cz + dz, 'village', -1]);
+  return out;
+})();
+const DROWN_LEVEL = 48, DROWN_DMG = 2;           // deep water: 3/4 of a block or more
+const SPAWN_OFFSET = 16;                        // each army starts just in front of its base
+// Starting soldiers: each army stands just in front of its own base (mirrored).
+const UNIT_SPAWNS = (() => {
+  const cx = W >> 1, cz = D >> 1, out = [];
+  for (const d of [-2, 0, 2]) out.push([0, cx - SPAWN_OFFSET, cz + d]);
+  for (const d of [-2, 0, 2]) out.push([1, cx + SPAWN_OFFSET, cz + d]);
+  return out;
+})();
+function groundY(g, x, z) { let y = 0; while (y < H && g[idx(x, y, z)]) y++; return y; }
+
+// Every block change goes through setCell, which keeps three things up to date:
+// the incremental block hash, the list of changed cells (for redrawing), and the region to re-check for support.
+const zob = (i, v) => v ? mix(Math.imul(i, 8) + v) : 0;
+function blockHash(g) { let h = 0; for (let i = 0; i < N; i++) if (g[i]) h ^= zob(i, g[i]); return h; }
+/* ---------- Water: finite, levels 0..WFULL per air cell. Falls first, then levels out sideways. ---------- */
+const WFULL = 64;                               // levels per block: fine enough that frozen slopes are tiny
+const TENSION = 8;                              // water must be 1/8 of a block deep to spread onto a dry tile
+const zw = (i, v) => v ? mix(Math.imul(i, 16) + v + 1000003) : 0;
+function waterHash(w) { let h = 0; for (let i = 0; i < N; i++) if (w[i]) h ^= zw(i, w[i]); return h; }
+function wakeWater(s, i) {
+  // Awake cells for the next tick: a flat list plus a mark per cell, so each cell is listed once.
+  const m = s.wmark, gen = s.wgen, q = s.wnext;
+  const wake = k => { if (m[k] !== gen) { m[k] = gen; q.push(k); } };
+  wake(i);
+  const x = i % W, z = ((i / W) | 0) % D, y = (i / WD) | 0;
+  if (x > 0) wake(i - 1); if (x < W - 1) wake(i + 1);
+  if (z > 0) wake(i - W); if (z < D - 1) wake(i + W);
+  if (y > 0) wake(i - WD); if (y < H - 1) wake(i + WD);
+}
+function setWater(s, i, v) {
+  const old = s.w[i];
+  if (old === v) return;
+  if (s.jr && s.jw[i] !== s.jstamp) { s.jw[i] = s.jstamp; s.jr.wi.push(i); s.jr.wo.push(old); }
+  s.wh ^= zw(i, old) ^ zw(i, v);
+  s.w[i] = v;
+  s.wchanged.push(i);
+  wakeWater(s, i);
+}
+// Search the same layer, up to DRAIN_R steps through cells that aren't full, for a "drop": an open cell with room
+// below it. Returns the first neighbour on the shortest way there (fixed direction order, so it's deterministic), or -1.
+const DRAIN_R = 6, DRW = 2 * DRAIN_R + 1;
+const dSeen = new Int32Array(DRW * DRW), dFirst = new Int32Array(DRW * DRW), dQ = new Int32Array(DRW * DRW);
+let dStamp = 0;
+function drainStep(s, i) {
+  const g = s.g, w = s.w, y = (i / WD) | 0;
+  if (y === 0) return -1;
+  const ix = i % W, iz = ((i / W) | 0) % D;
+  const key = (x, z) => (x - ix + DRAIN_R) * DRW + (z - iz + DRAIN_R);
+  dStamp++;
+  dSeen[key(ix, iz)] = dStamp;
+  let head = 0, tail = 0;
+  dQ[tail++] = i;
+  for (let r = 0; r < DRAIN_R && head < tail; r++) {
+    const end = tail;
+    for (; head < end; head++) {
+      const c = dQ[head], x = c % W, z = ((c / W) | 0) % D;
+      for (let d = 0; d < 4; d++) {
+        const X = x + (d === 0 ? 1 : d === 2 ? -1 : 0), Z = z + (d === 1 ? 1 : d === 3 ? -1 : 0);
+        if (X < 0 || X >= W || Z < 0 || Z >= D) continue;
+        const k = key(X, Z);
+        if (dSeen[k] === dStamp) continue;
+        const j = X + Z * W + y * WD;
+        if (g[j] || w[j] >= WFULL) continue;
+        dSeen[k] = dStamp;
+        const first = c === i ? j : dFirst[key(x, z)];
+        if (!g[j - WD] && w[j - WD] < WFULL) return first;      // found a drop
+        dFirst[k] = first;
+        dQ[tail++] = j;
+      }
+    }
+  }
+  return -1;
+}
+// Pressure head of a water cell, in water units: a full cell under more water feels the whole column above it,
+// so a hole at the bottom of a deep lake pushes hard. A cell open to the air feels only its own level.
+function waterHead(s, i) {
+  const w = s.w, g = s.g;
+  let k = i, y = (i / WD) | 0;
+  while (w[k] === WFULL && y < H - 1 && !g[k + WD] && w[k + WD]) { k += WD; y++; }
+  return y * WFULL + w[k];
+}
+// One water tick. Every awake cell moves only the water it had at the start of the tick:
+// down into the cell below if there's room, otherwise sideways toward lower pressure.
+const DIR_X = [1, 0, -1, 0], DIR_Z = [0, 1, 0, -1];
+function waterStep(s) {
+  if (!s.wnext.length) return false;
+  const list = Int32Array.from(s.wnext).sort();   // numeric, ascending: a fixed order keeps it deterministic
+  s.wnext = [];
+  s.wgen++;
+  const g = s.g, w = s.w;
+  const snap = new Uint8Array(list.length);
+  for (let n = 0; n < list.length; n++) snap[n] = w[list[n]];
+  const flip = (s.wtick++ & 1) ? 2 : 0;           // alternate the starting direction each tick, so there's no drift
+  let changed = false;
+  for (let n = 0; n < list.length; n++) {
+    const i = list[n];
+    if (g[i]) continue;
+    let avail = Math.min(snap[n], w[i]);
+    if (!avail) continue;
+    const y = (i / WD) | 0;
+    if (y > 0 && !g[i - WD] && w[i - WD] < WFULL) {
+      const b = i - WD, d = Math.min(avail, WFULL - w[b]);
+      setWater(s, b, w[b] + d); setWater(s, i, w[i] - d);
+      avail -= d; changed = true;
+      continue;                                  // falling water doesn't also spread this tick
+    }
+    const x = i % W, z = ((i / W) | 0) % D;
+    let spread = false;
+    let hi = waterHead(s, i);
+    const open = w[i] < WFULL;                  // not under pressure: its head is just its own level
+    for (let k = 0; k < 4 && avail; k++) {
+      const dir = (k + flip) & 3, dx = DIR_X[dir], dz = DIR_Z[dir];
+      const X = x + dx, Z = z + dz;
+      if (X < 0 || X >= W || Z < 0 || Z >= D) continue;
+      const j = i + dx + dz * W;
+      if (g[j]) continue;
+      const wj = w[j];
+      if (!wj && w[i] < TENSION) continue;      // surface tension: shallow water doesn't wet dry ground
+      if (open && wj + 1 >= w[i]) continue;     // cheap early out: can't be 2 levels lower
+      // Move half the difference in pressure head (at least 2 apart), limited by what fits and what we have.
+      const d = Math.min(avail, WFULL - wj, (hi - waterHead(s, j)) >> 1);
+      if (d <= 0) continue;
+      setWater(s, j, wj + d); setWater(s, i, w[i] - d);
+      avail -= d; changed = true; spread = true;
+      hi = waterHead(s, i);
+    }
+    // Stuck (thin film, nothing 2 levels lower next to it)? Trickle one unit toward the nearest drop, if one is close.
+    if (!spread && avail && w[i] <= 16 && s.dfail[i] <= s.wtick) {   // only thin water; skip cells that just searched in vain
+      const j = drainStep(s, i);
+      if (j < 0) s.dfail[i] = s.wtick + 8;      // nothing within reach: don't search again for 8 ticks
+      if (j >= 0 && w[j] < w[i]) { setWater(s, j, w[j] + 1); setWater(s, i, w[i] - 1); changed = true; spread = true; }
+    }
+  }
+  return changed;
+}
+
+function setCell(s, i, v) {
+  const old = s.g[i];
+  if (old === v) return;
+  if (s.jr && s.jg[i] !== s.jstamp) { s.jg[i] = s.jstamp; s.jr.gi.push(i); s.jr.go.push(old); }
+  if (v !== AIR && s.w[i]) {                     // a block landing in water pushes the water up (overflow is lost)
+    const a = i + WD;
+    if ((i / WD | 0) < H - 1 && !s.g[a]) setWater(s, a, Math.min(WFULL, s.w[a] + s.w[i]));
+    setWater(s, i, 0);
+  }
+  s.bh ^= zob(i, old) ^ zob(i, v);
+  s.g[i] = v;
+  s.changed.push(i);
+  wakeWater(s, i);
+  const x = i % W, z = ((i / W) | 0) % D, r = s.region;
+  if (!r) s.region = { x0: x, x1: x, z0: z, z1: z };
+  else { if (x < r.x0) r.x0 = x; if (x > r.x1) r.x1 = x; if (z < r.z0) r.z0 = z; if (z > r.z1) r.z1 = z; }
+}
+
+function newState() {
+  const w = new Uint8Array(N);
+  const g = generate(SEED, w);
+  const cx = W >> 1, cz = D >> 1;
+  const spots = [];
+  spots.push(...UNIT_SPAWNS);
+  const units = spots.map(([team, x, z], k) => ({ id: k, type: 'soldier', team, x, y: groundY(g, x, z), z, hp: MAX_HP, moved: false, acted: false, dead: false }));
+  const buildings = BUILDING_SPOTS.map(([x, z, kind, owner]) => ({ kind, owner, x, y: groundY(g, x, z), z, cp: CAPTURE_PTS, capBy: -1 }));
+  return { g, units, buildings, gold: [START_GOLD, START_GOLD], built: false, winner: -1, team: 0, turn: 1, moves: 0, events: [], loot: [], nextLoot: 1, inv: [0, 0, 0, 0, 0, 0, 0],
+           bh: blockHash(g), changed: [], region: null,
+           w, wh: waterHash(w), wnext: [], wmark: new Int32Array(N), wgen: 1, dfail: new Int32Array(N),
+           jr: null, jg: new Int32Array(N), jw: new Int32Array(N), jstamp: 0, history: [], cursor: 0, wchanged: [], wtick: 0 };
+}
+
+const solidAt = (s, x, y, z) => inGrid(x, y, z) && s.g[idx(x, y, z)] !== AIR;
+function unitAt(s, x, y, z, except) {
+  for (const u of s.units) if (u !== except && !u.dead && u.x === x && u.y === y && u.z === z) return u;
+  return null;
+}
+// A cell a unit can occupy: inside the world's sides, not solid, not taken by another unit.
+function freeCell(s, x, y, z, except) {
+  return x >= 0 && x < W && z >= 0 && z < D && y >= 1 && y < H + 4 && !solidAt(s, x, y, z) && !unitAt(s, x, y, z, except);
+}
+// Commit a unit to a cell (the snapped result of walking).
+function placeUnit(s, u, x, y, z) {
+  if (!freeCell(s, x, y, z, u)) return false;
+  if (u.x !== x || u.y !== y || u.z !== z) s.moves++;
+  u.x = x; u.y = y; u.z = z;
+  settleUnits(s);
+  return true;
+}
+// Units are pushed up out of blocks and fall when nothing is under them (a unit below counts as ground).
+function settleUnits(s) {
+  for (const u of s.units) if (!u.dead) while (u.y < H + 3 && solidAt(s, u.x, u.y, u.z)) u.y++;
+  let moved = true;
+  while (moved) {
+    moved = false;
+    for (const u of s.units) {
+      if (u.dead) continue;
+      if (u.y > 1 && !solidAt(s, u.x, u.y - 1, u.z) && !unitAt(s, u.x, u.y - 1, u.z, u)) { u.y--; moved = true; }
+    }
+  }
+  collectLoot(s);
+}
+
+/* ---------- Movement range (Advance Wars style) ----------
+   Every step to a neighbouring column costs 1: walking flat, stepping up 1, or dropping down any height.
+   Blocks and other units block; units can't be climbed over. */
+const cellKey = (x, y, z) => x + ',' + y + ',' + z;
+// From a free cell, drop to where a unit would stand. -1 if the cell isn't free.
+function standY(s, x, y, z, u) {
+  if (!freeCell(s, x, y, z, u)) return -1;
+  while (y > 1 && !solidAt(s, x, y - 1, z) && !unitAt(s, x, y - 1, z, u)) y--;
+  return y;
+}
+// One step from (x,y,z) toward a neighbouring column: walk flat, drop, or climb one. Returns the new y, or -1.
+function stepTo(s, u, x, y, z, dx, dz) {
+  const t = UNIT_TYPES[u.type], nx = x + dx, nz = z + dz;
+  let ny = standY(s, nx, y, nz, u);
+  if (ny < 0) {
+    if (t.noClimb || !solidAt(s, nx, y, nz)) return -1;        // knights can't climb; units and edges block
+    if (!freeCell(s, x, y + 1, z, u) || !freeCell(s, nx, y + 1, nz, u)) return -1;
+    ny = y + 1;
+  }
+  if (t.tall && solidAt(s, nx, Math.max(y, ny) + 1, nz)) return -1;   // 2 tall: needs headroom, so no tunnels
+  return ny;
+}
+const moveOf = u => UNIT_TYPES[u.type].move;
+function moveRange(s, u, steps) {
+  const dist = new Map();
+  const q = [[u.x, u.y, u.z]];
+  dist.set(cellKey(u.x, u.y, u.z), 0);
+  for (let h = 0; h < q.length; h++) {
+    const [x, y, z] = q[h], d = dist.get(cellKey(x, y, z));
+    if (d >= steps) continue;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const ny = stepTo(s, u, x, y, z, dx, dz);
+      if (ny < 0) continue;
+      const nx = x + dx, nz = z + dz;
+      const k = cellKey(nx, ny, nz);
+      if (!dist.has(k)) { dist.set(k, d + 1); q.push([nx, ny, nz]); }
+    }
+  }
+  return dist;
+}
+// Confirm a move: the target must be in range and the unit not moved yet this turn.
+function moveUnit(s, u, x, y, z) {
+  if (u.dead || u.team !== s.team || u.moved) return false;
+  if (!moveRange(s, u, moveOf(u)).has(cellKey(x, y, z))) return false;
+  if (!placeUnit(s, u, x, y, z)) return false;
+  u.moved = true;
+  resetCaptures(s);
+  return true;
+}
+/* ---------- Digging: break any block within DIG_REACH of the unit (no limit per turn) ---------- */
+const DIG_REACH = 3;
+function canDig(s, u, x, y, z) {
+  if (u.dead || u.team !== s.team || !inGrid(x, y, z)) return false;
+  const m = s.g[idx(x, y, z)];
+  if (m === AIR || m === BEDROCK) return false;
+  const tool = UNIT_TYPES[u.type].dig;
+  if (tool === 'none' || (tool === 'soft' && !SOFT[m])) return false;
+  return Math.max(Math.abs(x - u.x), Math.abs(y - u.y), Math.abs(z - u.z)) <= DIG_REACH;
+}
+function dig(s, u, x, y, z) {
+  if (!canDig(s, u, x, y, z)) return false;
+  setCell(s, idx(x, y, z), AIR);
+  s.moves++;
+  return true;
+}
+/* ---------- Attacking: an adjacent enemy (one tile, up to one block up or down), once per turn ---------- */
+// Melee: an adjacent tile, at most one block up or down. Archers: 2-3 tiles away, +1 range from 2+ blocks higher.
+const adjacent = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.z - b.z) === 1 && Math.abs(a.y - b.y) <= 1;
+function inReach(a, b) {
+  if (!UNIT_TYPES[a.type].ranged) return adjacent(a, b);
+  const d = Math.abs(a.x - b.x) + Math.abs(a.z - b.z);
+  return d >= 2 && d <= 3 + (a.y - b.y >= 2 ? 1 : 0);
+}
+function canAttack(s, a, b) {
+  if (a.dead || b.dead || a.team !== s.team || b.team === a.team || a.acted) return false;
+  return inReach(a, b);
+}
+// Damage scales with the attacker's health (a hurt unit hits softer), rounded, at least 1.
+const damageOf = (a, b) => Math.max(1, Math.floor((DAMAGE[a.type][b.type] * a.hp + 5) / 10));
+function hurt(s, u, d) {
+  u.hp = Math.max(0, u.hp - d);
+  if (!u.hp) { u.dead = true; resetCaptures(s); }
+}
+function attack(s, a, b) {
+  if (!canAttack(s, a, b)) return false;
+  hurt(s, b, damageOf(a, b));
+  // Survivors strike back if they fight up close and the attacker is next to them (archers never do).
+  if (!b.dead && !UNIT_TYPES[b.type].ranged && adjacent(a, b)) hurt(s, a, damageOf(b, a));
+  a.acted = true; a.moved = true;              // attacking finishes the unit's turn
+  s.moves++;
+  return true;
+}
+// Hot-seat turns: control passes to the other team; a full round (Blue then Red) is one turn.
+/* ---------- Capture and build ---------- */
+const buildingAt = (s, x, y, z) => s.buildings.find(b => b.x === x && b.y === y && b.z === z) || null;
+// A capture in progress is lost if the capturing unit leaves the tile or dies.
+function resetCaptures(s) {
+  for (const b of s.buildings) {
+    if (b.capBy < 0) continue;
+    const u = s.units[b.capBy];
+    if (!u || u.dead || u.x !== b.x || u.y !== b.y || u.z !== b.z) { b.capBy = -1; b.cp = CAPTURE_PTS; }
+  }
+}
+function canCapture(s, u) {
+  if (s.winner >= 0 || u.dead || u.team !== s.team || u.acted || !UNIT_TYPES[u.type].capture) return null;
+  const b = buildingAt(s, u.x, u.y, u.z);
+  return b && b.owner !== u.team ? b : null;
+}
+function capture(s, u) {
+  const b = canCapture(s, u);
+  if (!b) return false;
+  if (b.capBy !== u.id) { b.capBy = u.id; b.cp = CAPTURE_PTS; }
+  b.cp -= u.hp;                                  // a healthy unit takes 2 turns, a hurt one longer
+  if (b.cp <= 0) {
+    b.owner = u.team; b.cp = CAPTURE_PTS; b.capBy = -1;
+    if (b.kind === 'base') s.winner = u.team;    // taking the enemy base wins the match
+  }
+  u.acted = true; u.moved = true;
+  s.moves++;
+  return true;
+}
+const baseOf = (s, team) => s.buildings.find(b => b.kind === 'base' && b.owner === team) || null;
+function canBuild(s, type) {
+  const b = baseOf(s, s.team), t = UNIT_TYPES[type];
+  if (s.winner >= 0 || !b || !t || s.built || s.gold[s.team] < t.cost) return false;
+  return !unitAt(s, b.x, b.y, b.z) && !solidAt(s, b.x, b.y, b.z);
+}
+function buildUnit(s, type) {
+  if (!canBuild(s, type)) return null;
+  const b = baseOf(s, s.team);
+  const u = { id: s.units.length, type, team: s.team, x: b.x, y: b.y, z: b.z, hp: MAX_HP, moved: true, acted: true, dead: false };
+  s.units.push(u);                               // new units wait until next turn
+  s.gold[s.team] -= UNIT_TYPES[type].cost;
+  s.built = true;
+  s.moves++;
+  settleUnits(s);
+  return u;
+}
+const incomeOf = (s, team) => INCOME * s.buildings.filter(b => b.owner === team).length;
+
+/* ---------- Undo / redo: every action this turn is journaled and stays undoable until End turn ----------
+   While an action runs (including its collapse and flood), the first change to each block or water cell is recorded
+   with its old value; a small snapshot covers units, loot and counters. Undo writes old values back, redo the new ones. */
+function smallSnap(s) {
+  return JSON.parse(JSON.stringify({ units: s.units, loot: s.loot, nextLoot: s.nextLoot, inv: s.inv, team: s.team, turn: s.turn,
+    moves: s.moves, bh: s.bh, wh: s.wh, wtick: s.wtick, wnext: s.wnext,
+    buildings: s.buildings, gold: s.gold, built: s.built, winner: s.winner }));
+}
+function applySmall(s, m) {
+  s.units = JSON.parse(JSON.stringify(m.units));   // also undoes units that were built
+  s.buildings = JSON.parse(JSON.stringify(m.buildings));
+  s.gold = m.gold.slice();
+  s.built = m.built; s.winner = m.winner;
+  s.loot = JSON.parse(JSON.stringify(m.loot));
+  s.inv = m.inv.slice();
+  Object.assign(s, { nextLoot: m.nextLoot, team: m.team, turn: m.turn, moves: m.moves, bh: m.bh, wh: m.wh, wtick: m.wtick });
+  s.wgen++; s.wnext = [];                       // fresh wake list (normally empty between actions)
+  for (const i of m.wnext) if (s.wmark[i] !== s.wgen) { s.wmark[i] = s.wgen; s.wnext.push(i); }
+  s.region = null;
+}
+function beginAction(s) {
+  if (s.jr) return;
+  s.jstamp++;
+  s.dfail.fill(0);                              // drain-search cache never carries over between actions
+  s.jr = { gi: [], go: [], wi: [], wo: [], before: smallSnap(s) };
+}
+function endAction(s) {
+  const j = s.jr;
+  if (!j) return false;
+  s.jr = null;
+  j.after = smallSnap(s);
+  j.gn = j.gi.map(i => s.g[i]);
+  j.wn = j.wi.map(i => s.w[i]);
+  if (!j.gi.length && !j.wi.length && JSON.stringify(j.before) === JSON.stringify(j.after)) return false;   // nothing happened
+  s.history.length = s.cursor;                  // a new action drops anything that was undone
+  s.history.push(j);
+  s.cursor++;
+  return true;
+}
+function undo(s) {
+  if (s.jr || !s.cursor) return false;
+  const j = s.history[--s.cursor];
+  for (let k = j.gi.length - 1; k >= 0; k--) { s.g[j.gi[k]] = j.go[k]; s.changed.push(j.gi[k]); }
+  for (let k = j.wi.length - 1; k >= 0; k--) { s.w[j.wi[k]] = j.wo[k]; s.wchanged.push(j.wi[k]); }
+  applySmall(s, j.before);
+  return true;
+}
+function redo(s) {
+  if (s.jr || s.cursor >= s.history.length) return false;
+  const j = s.history[s.cursor++];
+  for (let k = 0; k < j.gi.length; k++) { s.g[j.gi[k]] = j.gn[k]; s.changed.push(j.gi[k]); }
+  for (let k = 0; k < j.wi.length; k++) { s.w[j.wi[k]] = j.wn[k]; s.wchanged.push(j.wi[k]); }
+  applySmall(s, j.after);
+  return true;
+}
+function endTurn(s) {
+  s.history = []; s.cursor = 0;                 // End turn commits: nothing before this can be undone
+  s.team = 1 - s.team;
+  if (s.team === 0) s.turn++;
+  for (const u of s.units) if (u.team === s.team) { u.moved = false; u.acted = false; }
+  s.built = false;
+  s.gold[s.team] += incomeOf(s, s.team);       // every village and base you own pays at the start of your turn
+  // Soldiers starting their turn in deep water take damage.
+  s.drowned = [];
+  for (const u of s.units) {
+    if (u.dead || u.team !== s.team || !inGrid(u.x, u.y, u.z) || s.w[idx(u.x, u.y, u.z)] < DROWN_LEVEL) continue;
+    hurt(s, u, DROWN_DMG);
+    s.drowned.push(u.id);
+  }
+  resetCaptures(s);                              // a capturer that fell or was washed off its tile loses progress
+}
+
+const nb = new Int32Array(6);
+function neighbours(i) {
+  const x = i % W, z = ((i / W) | 0) % D, y = (i / WD) | 0;
+  let n = 0;
+  if (x > 0) nb[n++] = i - 1;
+  if (x < W - 1) nb[n++] = i + 1;
+  if (z > 0) nb[n++] = i - W;
+  if (z < D - 1) nb[n++] = i + W;
+  if (y > 0) nb[n++] = i - WD;
+  if (y < H - 1) nb[n++] = i + WD;
+  return n;
+}
+
+/* ---------- Support: one rule for every material ----------
+   A block is supported if it rests on a supported block (inherits its distance)
+   or hangs sideways / below one (distance + 1). Each material has a max reach.
+   Leaves only take support from wood or leaves; nothing takes support from leaves.
+
+     #      ##      ###        distance 0, 1, 2 from the column
+     #       #        #
+*/
+//                 air grass dirt stone wood bedrock leaves
+const REACH   = [  0,   1,    1,   2,    3,   0,      2 ];
+const FRAGILE = [  0,   1,    1,   0,    1,   0,      1 ];  // fragile crumbles one block at a time and vanishes
+const LOOT    = [  0,   0,    0,   0,    4,   0,      0 ];  // what a crumbled block leaves behind (4 = wood)
+const MAX_REACH = 3;
+const UNSUP = 255;
+const sdist = new Uint8Array(N);
+const comp = new Int32Array(N), q = new Int32Array(N);
+
+function canSupport(by, m) {
+  if (m === LEAVES) return by === WOOD || by === LEAVES;
+  return by !== LEAVES;
+}
+
+// 0-1 BFS with buckets, inside a box of columns: resting on top costs 0, hanging sideways or below costs 1.
+// Results are only trustworthy MAX_REACH columns inside the box's edges.
+function computeSupport(g, x0, x1, z0, z1) {
+  for (let y = 0; y < H; y++) for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) sdist[idx(x, y, z)] = UNSUP;
+  const B = [];
+  for (let L = 0; L <= MAX_REACH; L++) B.push([]);
+  for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) { const i = idx(x, 0, z); if (g[i]) { sdist[i] = 0; B[0].push(i); } }
+  for (let L = 0; L <= MAX_REACH; L++) {
+    const b = B[L];
+    for (let h = 0; h < b.length; h++) {
+      const i = b[h];
+      if (sdist[i] !== L) continue;
+      const m = g[i], x = i % W, z = ((i / W) | 0) % D, y = (i / WD) | 0;
+      const relax = (j, d) => {
+        const mj = g[j];
+        if (!mj || d > REACH[mj] || d >= sdist[j] || !canSupport(m, mj)) return;
+        sdist[j] = d; B[d].push(j);
+      };
+      if (y < H - 1) relax(i + WD, L);          // resting on top: inherits
+      if (L < MAX_REACH) {
+        if (x > x0) relax(i - 1, L + 1);
+        if (x < x1) relax(i + 1, L + 1);
+        if (z > z0) relax(i - W, L + 1);
+        if (z < z1) relax(i + W, L + 1);
+        if (y > 0) relax(i - WD, L + 1);        // hanging below
+      }
+    }
+  }
+}
+
+// One gravity step. Returns true while something is still changing.
+// Only the region around this collapse's changes is checked: support paths never reach more than
+// MAX_REACH columns sideways, so nothing further away can have lost support.
+// 1) Unsupported rigid clusters (stone) fall one cell and land intact.
+// 2) Only when nothing rigid moved: one unsupported fragile block crumbles (wood first, then highest).
+// Visual hints go to s.events and never feed back into the sim.
+function gravityStep(s) {
+  const g = s.g, r = s.region;
+  if (!r) return false;
+  const tx0 = Math.max(0, r.x0 - MAX_REACH), tx1 = Math.min(W - 1, r.x1 + MAX_REACH);
+  const tz0 = Math.max(0, r.z0 - MAX_REACH), tz1 = Math.min(D - 1, r.z1 + MAX_REACH);
+  computeSupport(g, Math.max(0, r.x0 - 2 * MAX_REACH), Math.min(W - 1, r.x1 + 2 * MAX_REACH),
+                    Math.max(0, r.z0 - 2 * MAX_REACH), Math.min(D - 1, r.z1 + 2 * MAX_REACH));
+  const inBox = i => { const x = i % W, z = ((i / W) | 0) % D; return x >= tx0 && x <= tx1 && z >= tz0 && z <= tz1; };
+  const loose = i => { const v = g[i]; return v && v !== BEDROCK && !FRAGILE[v] && sdist[i] === UNSUP && inBox(i); };
+  for (let y = 0; y < H; y++) for (let z = tz0; z <= tz1; z++) for (let x = tx0; x <= tx1; x++) comp[idx(x, y, z)] = -1;
+  const clusters = [];
+  for (let y = 0; y < H; y++) for (let z = tz0; z <= tz1; z++) for (let x = tx0; x <= tx1; x++) {
+    const i = idx(x, y, z);
+    if (!loose(i) || comp[i] >= 0) continue;
+    const id = clusters.length, cells = [];
+    let minY = H, qh = 0, qt = 0;
+    q[qt++] = i; comp[i] = id;
+    while (qh < qt) {
+      const k0 = q[qh++]; cells.push(k0);
+      const yy = (k0 / WD) | 0; if (yy < minY) minY = yy;
+      const n = neighbours(k0);
+      for (let k = 0; k < n; k++) { const j = nb[k]; if (loose(j) && comp[j] < 0) { comp[j] = id; q[qt++] = j; } }
+    }
+    clusters.push({ id, cells, minY, first: i });
+  }
+  clusters.sort((a, b) => a.minY - b.minY || a.first - b.first);
+  let changed = false;
+  for (const c of clusters) {
+    let ok = true;
+    for (const k of c.cells) {
+      if (k < WD) { ok = false; break; }
+      const b = k - WD;
+      if (g[b] !== AIR && comp[b] !== c.id) { ok = false; break; }
+    }
+    if (!ok) continue;                          // resting on something: stays put
+    const mats = c.cells.map(k => g[k]);
+    for (const k of c.cells) setCell(s, k, AIR);
+    for (let n = 0; n < c.cells.length; n++) setCell(s, c.cells[n] - WD, mats[n]);
+    changed = true;
+  }
+  if (changed) { settleLoot(s); settleUnits(s); return true; }
+  // Crumble one block: unsupported wood first (so a trunk goes before its leaves), then other fragile blocks.
+  let pick = -1;
+  for (let pass = 0; pass < 2 && pick < 0; pass++) {
+    for (let y = H - 1; y >= 0 && pick < 0; y--) for (let z = tz1; z >= tz0 && pick < 0; z--) for (let x = tx1; x >= tx0; x--) {
+      const i = idx(x, y, z), v = g[i];
+      if (!v || sdist[i] !== UNSUP) continue;
+      if (pass === 0 ? v === WOOD : FRAGILE[v]) { pick = i; break; }
+    }
+  }
+  if (pick >= 0) {
+    const m = g[pick];
+    setCell(s, pick, AIR);
+    const ev = { type: 'crumble', i: pick, m };
+    if (LOOT[m]) ev.loot = dropLoot(s, pick, LOOT[m]);
+    s.events.push(ev);
+    settleLoot(s); settleUnits(s);
+    return true;
+  }
+  s.region = null;                              // this collapse is over
+  settleLoot(s); settleUnits(s);
+  return false;
+}
+
+/* ---------- Loot: items lying in air cells, picked up by any unit ---------- */
+function dropLoot(s, i, m) {
+  const x = i % W, z = ((i / W) | 0) % D;
+  let y = (i / WD) | 0;
+  while (y > 0 && s.g[idx(x, y - 1, z)] === AIR) y--;
+  for (const l of s.loot) if (l.x === x && l.y === y && l.z === z && l.m === m) { l.n++; return l.id; }
+  const id = s.nextLoot++;
+  s.loot.push({ id, x, y, z, m, n: 1 });
+  return id;
+}
+// Loot never sits inside a block and always rests on something.
+function settleLoot(s) {
+  for (const l of s.loot) {
+    while (l.y < H && solidAt(s, l.x, l.y, l.z)) l.y++;
+    while (l.y > 0 && !solidAt(s, l.x, l.y - 1, l.z)) l.y--;
+  }
+  // Merge piles that ended up in the same cell (keep the oldest id).
+  const seen = new Map();
+  s.loot = s.loot.filter(l => {
+    const key = l.x + ',' + l.y + ',' + l.z + ',' + l.m, first = seen.get(key);
+    if (first) { first.n += l.n; return false; }
+    seen.set(key, l); return true;
+  });
+  collectLoot(s);
+}
+function collectLoot(s) {
+  let got = 0;
+  s.loot = s.loot.filter(l => {
+    if (unitAt(s, l.x, l.y, l.z)) { s.inv[l.m] += l.n; got += l.n; return false; }
+    return true;
+  });
+  return got;
+}
+
+function stateHash(s) {
+  let h = 0x811c9dc5;
+  const g = s.g;
+  h ^= s.bh; h = Math.imul(h, 0x01000193);    // blocks: incremental, updated by setCell
+  h ^= s.wh; h = Math.imul(h, 0x01000193);    // water: incremental, updated by setWater
+  for (const u of s.units) for (const v of [u.x, u.y, u.z, u.team, TYPES.indexOf(u.type), u.hp, u.moved ? 1 : 0, u.acted ? 1 : 0, u.dead ? 1 : 0]) { h ^= v; h = Math.imul(h, 0x01000193); }
+  for (const b of s.buildings) for (const v of [b.owner + 1, b.cp, b.capBy + 1]) { h ^= v; h = Math.imul(h, 0x01000193); }
+  for (const v of [s.gold[0], s.gold[1], s.built ? 1 : 0, s.winner + 1]) { h ^= v; h = Math.imul(h, 0x01000193); }
+  h ^= s.team; h = Math.imul(h, 0x01000193);
+  for (const l of s.loot) for (const v of [l.x, l.y, l.z, l.m, l.n]) { h ^= v; h = Math.imul(h, 0x01000193); }
+  h ^= s.turn; h = Math.imul(h, 0x01000193);
+  for (const v of s.inv) { h ^= v; h = Math.imul(h, 0x01000193); }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+/* =========================================================
+   VIEW — Three.js. Reads the sim; walking is a visual that commits snapped cells.
+   ========================================================= */
+const MAT_COLOR = { 1: 0x6aa84f, 2: 0x8b5a34, 3: 0x8e9198, 4: 0xb4864f, 5: 0x3a3a42, 6: 0x3f8f3b };
+const PLACEABLE = [{ m: STONE, name: 'Stone' }, { m: DIRT, name: 'Dirt' }, { m: WOOD, name: 'Wood' }, { m: LEAVES, name: 'Leaves' }];
+
+let S = newState();
+let aim = [0, 0, -1];
+let vert = 0;   // 0 = camera's horizontal aim, 1 = straight above, -1 = straight below
+let mat = STONE;
+let falling = false;
+
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 140);
+
+function cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function applyTheme() {
+  const sky = new THREE.Color(cssVar('--sky') || '#bcd6e8');
+  scene.background = sky;
+  scene.fog = new THREE.Fog(sky, 45, 110);
+}
+applyTheme();
+if (window.matchMedia) {
+  const mq = window.matchMedia('(prefers-color-scheme: dark)');
+  if (mq.addEventListener) mq.addEventListener('change', applyTheme);
+}
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x6b7a86, 0.75));
+const sun = new THREE.DirectionalLight(0xffffff, 0.7);
+sun.position.set(0.6, 1, 0.35);
+scene.add(sun);
+
+// Blocks: one instanced mesh, rebuilt after every change.
+const blockGeo = new THREE.BoxGeometry(0.97, 0.97, 0.97);
+const blockMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+// Ghost blocks: block surfaces closer to the camera than the selected unit, inside a circle around it on screen,
+// are dithered away so you can see the unit through a hill. uCut fades it in and out (0 = off).
+const ghost = { uCut: { value: 0 }, uUnitPx: { value: new THREE.Vector2() }, uRadiusPx: { value: 1 }, uUnitDepth: { value: 0 } };
+blockMat.onBeforeCompile = sh => {
+  Object.assign(sh.uniforms, ghost);
+  sh.vertexShader = 'varying float vCutDepth;\n' + sh.vertexShader.replace('#include <project_vertex>',
+    '#include <project_vertex>\n  vCutDepth = -mvPosition.z;');
+  sh.fragmentShader = `varying float vCutDepth;
+uniform float uCut; uniform vec2 uUnitPx; uniform float uRadiusPx; uniform float uUnitDepth;
+float bayer2(vec2 p) { p = floor(mod(p, 2.0)); return (p.x * 2.0 + p.y * 3.0 - 4.0 * p.x * p.y) / 4.0; }
+` + sh.fragmentShader.replace('void main() {', `void main() {
+  if (uCut > 0.0 && vCutDepth < uUnitDepth - 0.7) {
+    float r = length(gl_FragCoord.xy - uUnitPx) / uRadiusPx;
+    if (r < 1.0) {
+      float amount = uCut * 0.72 * (1.0 - smoothstep(0.65, 1.0, r));
+      float th = bayer2(gl_FragCoord.xy) + bayer2(floor(gl_FragCoord.xy * 0.5)) * 0.25;
+      if (th < amount) discard;
+    }
+  }`);
+};
+// Chunked rendering: one instanced mesh per 32x32 column chunk; a change redraws only the chunks it touches.
+const CH = 16, NCX = W / CH, NCZ = D / CH;
+const chunkMeshes = [], chunkCap = [];
+const visBuf = new Int32Array(CH * CH * H);
+const tmpM = new THREE.Matrix4(), tmpC = new THREE.Color();
+// Layer view: blocks from cut.y upward are hidden around the view centre, so you look down onto one layer.
+// Auto follows the selected unit when it's underground; ▲/▼ pick a layer by hand.
+const CUT_R = 40;                               // hide within this many columns of the view centre
+let cut = null;                                 // { x, y, z } or null
+const hiddenCell = (x, y, z) => cut !== null && y >= cut.y && Math.abs(x - cut.x) <= CUT_R && Math.abs(z - cut.z) <= CUT_R;
+function exposed(x, y, z) {
+  const g = S.g;
+  const open = (X, Y, Z) => {
+    if (Y < 0 || X < 0 || X >= W || Z < 0 || Z >= D) return false;   // world edges and the underside stay closed
+    if (Y >= H) return true;
+    if (hiddenCell(X, Y, Z)) return true;
+    return g[idx(X, Y, Z)] === AIR;
+  };
+  return open(x + 1, y, z) || open(x - 1, y, z) || open(x, y + 1, z) || open(x, y - 1, z) || open(x, y, z + 1) || open(x, y, z - 1);
+}
+function rebuildChunk(k) {
+  const g = S.g, cx0 = (k % NCX) * CH, cz0 = ((k / NCX) | 0) * CH;
+  let n = 0;
+  for (let y = H - 1; y >= 0; y--) for (let z = cz0; z < cz0 + CH; z++) for (let x = cx0; x < cx0 + CH; x++) {
+    const i = idx(x, y, z);
+    if (g[i] && !hiddenCell(x, y, z) && exposed(x, y, z)) visBuf[n++] = i;
+  }
+  let mesh = chunkMeshes[k];
+  if (!mesh || chunkCap[k] < n) {
+    if (mesh) { scene.remove(mesh); if (mesh.dispose) mesh.dispose(); }
+    const cap = Math.max(64, Math.ceil(n * 1.5));
+    mesh = new THREE.InstancedMesh(blockGeo, blockMat, cap);
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.frustumCulled = false;
+    mesh.userData.chunk = true;
+    mesh.userData.cells = new Int32Array(cap);
+    chunkMeshes[k] = mesh; chunkCap[k] = cap;
+    scene.add(mesh);
+  }
+  for (let j = 0; j < n; j++) {
+    const i = visBuf[j], x = i % W, z = ((i / W) | 0) % D, y = (i / WD) | 0;
+    tmpM.makeTranslation(x + 0.5, y + 0.5, z + 0.5);
+    mesh.setMatrixAt(j, tmpM);
+    tmpC.setHex(MAT_COLOR[g[i]]).multiplyScalar(0.9 + (mix(i * 31 + 7) % 11) / 100);
+    if (hiddenCell(x, y + 1, z)) tmpC.multiplyScalar(0.62);          // the cut surface reads as a slice
+    mesh.setColorAt(j, tmpC);
+    mesh.userData.cells[j] = i;
+  }
+  mesh.count = n;
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+}
+// Is the unit in a hole or tunnel? Count neighbouring columns whose terrain (not trees) rises above its head.
+function terrainTop(x, z) {
+  for (let y = H - 1; y >= 0; y--) { const v = S.g[idx(x, y, z)]; if (v && v !== WOOD && v !== LEAVES) return y + 1; }
+  return 0;
+}
+function inHole(x, y, z) {
+  let walls = 0;
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+    if (!dx && !dz) continue;
+    const X = x + dx, Z = z + dz;
+    if (X < 0 || X >= W || Z < 0 || Z >= D || terrainTop(X, Z) >= y + 2) walls++;
+  }
+  return walls >= 4;
+}
+let layerMode = 'auto';                          // 'auto' follows the selected unit, 'manual' uses layerManual
+let layerManual = H - 1;                         // the layer you look at; H - 1 means everything is shown
+function desiredCut() {
+  if (fps || commander) return null;
+  const x = Math.floor(walker.p.x), y = Math.floor(walker.p.y + 1e-4), z = Math.floor(walker.p.z);
+  const cx = Math.round(x / 8) * 8, cz = Math.round(z / 8) * 8;   // centre moves in steps, so walking doesn't redraw constantly
+  let L;
+  if (layerMode === 'auto') { if (!inHole(x, y, z)) return null; L = y; }
+  else { if (layerManual >= H - 1) return null; L = layerManual; }
+  return { x: cx, y: L + 1, z: cz };            // hide everything above the layer the unit stands on
+}
+function chunksOfCut(c, set) {
+  if (!c) return;
+  const x0 = Math.max(0, c.x - CUT_R), x1 = Math.min(W - 1, c.x + CUT_R);
+  const z0 = Math.max(0, c.z - CUT_R), z1 = Math.min(D - 1, c.z + CUT_R);
+  for (let cz = (z0 / CH) | 0; cz <= ((z1 / CH) | 0); cz++) for (let cx = (x0 / CH) | 0; cx <= ((x1 / CH) | 0); cx++) set.add(cz * NCX + cx);
+}
+function updateLayerUI() {
+  $('layerTxt').textContent = cut ? 'Layer ' + (cut.y - 1) : 'All';
+  const b = document.querySelector('[data-act="layerAuto"]');
+  b.classList.toggle('on', layerMode === 'auto');
+  b.setAttribute('aria-pressed', String(layerMode === 'auto'));
+}
+let cutCheckKey = '';
+function updateCut() {
+  const key = Math.floor(walker.p.x) + ',' + Math.floor(walker.p.y + 1e-4) + ',' + Math.floor(walker.p.z) + ':' + S.bh + ':' + fps + ':' + layerMode + ':' + layerManual;
+  if (key === cutCheckKey) return;
+  cutCheckKey = key;
+  const next = desiredCut();
+  const same = (cut === null && next === null) || (cut && next && cut.x === next.x && cut.y === next.y && cut.z === next.z);
+  if (!same) {
+    const dirty = new Set();
+    chunksOfCut(cut, dirty);
+    chunksOfCut(next, dirty);
+    cut = next;
+    for (const k of dirty) { rebuildChunk(k); rebuildWaterChunk(k); }
+    showRange();
+  }
+  updateLayerUI();
+}
+// Water: one transparent instanced mesh per chunk; each water cell is a box as tall as it is full.
+const waterGeo = new THREE.BoxGeometry(1, 1, 1);
+const waterMat = new THREE.MeshLambertMaterial({ color: 0x3f8fd8, transparent: true, opacity: 0.6, depthWrite: false });
+const waterMeshes = [], waterCap = [];
+function waterShown(x, y, z, i) {
+  const g = S.g, w = S.w;
+  if (hiddenCell(x, y, z)) return false;
+  if (w[i] < WFULL || y === H - 1 || hiddenCell(x, y + 1, z)) return true;
+  const a = i + WD;
+  if (!g[a] && !w[a]) return true;                                   // the surface
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {         // an edge you can see through
+    const X = x + dx, Z = z + dz;
+    if (X < 0 || X >= W || Z < 0 || Z >= D) continue;
+    const j = i + dx + dz * W;
+    if (!g[j] && w[j] < WFULL) return true;
+  }
+  return false;
+}
+function rebuildWaterChunk(k) {
+  const w = S.w, cx0 = (k % NCX) * CH, cz0 = ((k / NCX) | 0) * CH;
+  let n = 0;
+  for (let y = 1; y < H; y++) for (let z = cz0; z < cz0 + CH; z++) for (let x = cx0; x < cx0 + CH; x++) {
+    const i = idx(x, y, z);
+    if (w[i] && waterShown(x, y, z, i)) visBuf[n++] = i;
+  }
+  let mesh = waterMeshes[k];
+  if (!n && !mesh) return;
+  if (!mesh || waterCap[k] < n) {
+    if (mesh) { scene.remove(mesh); if (mesh.dispose) mesh.dispose(); }
+    const cap = Math.max(64, Math.ceil(n * 1.5));
+    mesh = new THREE.InstancedMesh(waterGeo, waterMat, cap);
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 1;
+    waterMeshes[k] = mesh; waterCap[k] = cap;
+    scene.add(mesh);
+  }
+  for (let j = 0; j < n; j++) {
+    // Thin water is drawn a little thicker than it is, so trickles stay visible on their way down.
+    const i = visBuf[j], x = i % W, z = ((i / W) | 0) % D, y = (i / WD) | 0, f = Math.max(0.08, w[i] / WFULL);
+    tmpM.makeScale(1, f, 1).setPosition(x + 0.5, y + f / 2, z + 0.5);
+    mesh.setMatrixAt(j, tmpM);
+  }
+  mesh.count = n;
+  mesh.instanceMatrix.needsUpdate = true;
+}
+function rebuildAll() {
+  S.changed.length = 0;
+  S.wchanged.length = 0;
+  for (let k = 0; k < NCX * NCZ; k++) { rebuildChunk(k); rebuildWaterChunk(k); }
+}
+function chunksAround(list, set) {
+  for (const i of list) {
+    const x = i % W, z = ((i / W) | 0) % D;
+    for (const [dx, dz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const X = x + dx, Z = z + dz;
+      if (X >= 0 && X < W && Z >= 0 && Z < D) set.add(((Z / CH) | 0) * NCX + ((X / CH) | 0));
+    }
+  }
+}
+function rebuildChanged() {
+  if (!S.changed.length && !S.wchanged.length) return;
+  const blocksDirty = new Set(), waterDirty = new Set();
+  chunksAround(S.changed, blocksDirty);
+  chunksAround(S.changed, waterDirty);
+  chunksAround(S.wchanged, waterDirty);
+  S.changed.length = 0; S.wchanged.length = 0;
+  for (const k of blocksDirty) rebuildChunk(k);
+  for (const k of waterDirty) rebuildWaterChunk(k);
+}
+
+// Units: original pixel-art sprites on billboard quads that always turn to face the camera (Doom-style).
+// One body, with a different helmet and weapon per type. U/u are the team colour and its shade.
+const BODY = [
+  "................",
+  ".....HHHHH......",
+  "....HhhHHHH.....",
+  "...HHHHHHHHH....",
+  "...HHHHHHHHH....",
+  "....SSSSSS......",
+  "....SESSES......",
+  "....SSSSSS......",
+  ".....sSSs.......",
+  "...UUUUUUUU.....",
+  "..UUUUUUUUUU....",
+  "..UuUUUUUUuS....",
+  "..UuUUUUUUuU....",
+  "..SuUUUUUUuU....",
+  "....BBBBBBB.....",
+  "....UUUUUUU.....",
+  "....PPPPPPP.....",
+  "....PPP.PPP.....",
+  "....PPP.PPP.....",
+  "....PPP.PPP.....",
+  "....PPP.PPP.....",
+  "...KKKK.KKKK....",
+  "...KKKK.KKKK....",
+  "................"
+];
+// Weapon pixels per type: [x, y, palette key] drawn over the body.
+const WEAPON = {
+  soldier:  [[12, 4, 'M'], [12, 5, 'M'], [12, 6, 'M'], [12, 7, 'M'], [12, 8, 'M'], [12, 9, 'M'], [11, 10, 'B'], [12, 10, 'B'], [13, 10, 'B'], [12, 11, 'B']],
+  spearman: [[12, 0, 'M'], [11, 1, 'M'], [12, 1, 'M'], [13, 1, 'M'], ...Array.from({ length: 19 }, (_, k) => [12, 2 + k, 'W'])],
+  knight:   [[12, 3, 'M'], [12, 4, 'M'], [12, 5, 'M'], [12, 6, 'M'], [12, 7, 'M'], [12, 8, 'M'], [12, 9, 'M'], [11, 10, 'B'], [12, 10, 'B'], [13, 10, 'B'],
+             [0, 9, 'M'], [1, 9, 'M'], [0, 10, 'M'], [1, 10, 'U'], [0, 11, 'M'], [1, 11, 'U'], [0, 12, 'M'], [1, 12, 'M']],
+  archer:   [[12, 4, 'W'], [13, 5, 'W'], [14, 6, 'W'], [14, 7, 'W'], [14, 8, 'W'], [14, 9, 'W'], [13, 10, 'W'], [12, 11, 'W'],
+             [12, 5, 'T'], [12, 6, 'T'], [12, 7, 'T'], [12, 8, 'T'], [12, 9, 'T'], [12, 10, 'T']],
+  builder:  [[10, 4, 'M'], [11, 4, 'M'], [12, 4, 'M'], [13, 4, 'M'], [14, 4, 'M'], [12, 5, 'W'], [12, 6, 'W'], [12, 7, 'W'], [12, 8, 'W'], [12, 9, 'W'], [12, 10, 'W']],
+};
+const HELMET = { soldier: ['#4b5320', '#6b7a35'], spearman: ['#6b4423', '#8a5a33'], knight: ['#9aa3ad', '#d5dbe1'],
+                 archer: ['#2f6b3a', '#4f8f5a'], builder: ['#e2b714', '#f5d652'] };
+const SPRITE_PAL = { S: '#f1c27d', s: '#d9a066', E: '#22303b', B: '#6b4423', P: '#3a3f2a', K: '#161616',
+                     M: '#c9ced6', W: '#8a5a33', T: '#e8e1cf' };
+const spriteCache = new Map();
+function unitTexture(type, team) {
+  const key = type + team;
+  if (spriteCache.has(key)) return spriteCache.get(key);
+  const c = document.createElement('canvas');
+  c.width = 16; c.height = 24;
+  const ctx = c.getContext('2d');
+  const tc = new THREE.Color(TEAM_COLORS[team]), shade = tc.clone().multiplyScalar(0.62);
+  const pal = Object.assign({}, SPRITE_PAL, { U: '#' + tc.getHexString(), u: '#' + shade.getHexString(), H: HELMET[type][0], h: HELMET[type][1] });
+  const px = (x, y, k) => { ctx.fillStyle = pal[k]; ctx.fillRect(x, y, 1, 1); };
+  BODY.forEach((row, y) => { for (let x = 0; x < row.length; x++) if (row[x] !== '.') px(x, y, row[x]); });
+  for (const [x, y, k] of WEAPON[type]) px(x, y, k);
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
+  spriteCache.set(key, t);
+  return t;
+}
+let sel = 0;
+const selUnit = () => S.units[sel];
+const unitGroups = [];
+function makeUnitGroup(u) {
+  const g = new THREE.Group();
+  const tall = UNIT_TYPES[u.type].tall;
+  const sprite = new THREE.Mesh(new THREE.PlaneGeometry(tall ? 1.0 : 0.74, tall ? 1.5 : 1.1),
+    new THREE.MeshBasicMaterial({ map: unitTexture(u.type, u.team), alphaTest: 0.5, side: THREE.DoubleSide }));
+  sprite.position.y = tall ? 0.75 : 0.55;
+  g.add(sprite);
+  g.userData.sprite = sprite;
+  // Invisible hit box, bigger than the sprite, used for long-press selection and attack targeting.
+  const hit = new THREE.Mesh(new THREE.BoxGeometry(1, tall ? 1.9 : 1.4, 1),
+    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false }));
+  hit.position.y = tall ? 0.95 : 0.7;
+  g.add(hit);
+  g.userData.hit = hit;
+  // HP bar above the head (turned to the camera together with the sprite).
+  const hpBar = new THREE.Group();
+  const hpBg = new THREE.Mesh(new THREE.PlaneGeometry(0.74, 0.12), new THREE.MeshBasicMaterial({ color: 0x22303b, side: THREE.DoubleSide }));
+  const hpFill = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 0.07), new THREE.MeshBasicMaterial({ color: 0x4ade80, side: THREE.DoubleSide }));
+  hpFill.position.z = 0.002;
+  hpBar.add(hpBg, hpFill);
+  hpBar.position.y = tall ? 1.68 : 1.28;
+  g.add(hpBar);
+  g.userData.hpBar = hpBar; g.userData.hpFill = hpFill;
+  g.userData.vis = new THREE.Vector3(u.x + 0.5, u.y, u.z + 0.5);
+  g.userData.key = u.type + u.team;
+  g.position.copy(g.userData.vis);
+  scene.add(g);
+  return g;
+}
+// Keep one group per unit: units can be built (and un-built by undo), and a reset starts over.
+function syncUnitGroups() {
+  S.units.forEach((u, k) => {
+    const g = unitGroups[k];
+    if (g && g.userData.key === u.type + u.team) return;
+    if (g) scene.remove(g);
+    unitGroups[k] = makeUnitGroup(u);
+  });
+  for (let k = S.units.length; k < unitGroups.length; k++) unitGroups[k].visible = false;
+  if (sel >= S.units.length) sel = 0;
+}
+syncUnitGroups();
+// Red rings under enemies the selected unit can attack (Attack mode).
+const atkRings = [];
+function atkRing(k) {
+  if (!atkRings[k]) {
+    const m = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.07, 6, 28), new THREE.MeshBasicMaterial({ color: 0xe0453a }));
+    m.rotation.x = Math.PI / 2; m.visible = false;
+    scene.add(m);
+    atkRings[k] = m;
+  }
+  return atkRings[k];
+}
+const selRing = new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.05, 6, 28), new THREE.MeshBasicMaterial({ color: 0xff7a1a }));
+selRing.rotation.x = Math.PI / 2;
+scene.add(selRing);
+
+// Buildings: a flag on a pole; the base gets a taller pole, a bigger flag and a ring. Flag colour = owner.
+// While being captured, the flag slides down the pole.
+const buildingViews = [];
+function syncBuildings() {
+  S.buildings.forEach((b, k) => {
+    let v = buildingViews[k];
+    const base = b.kind === 'base';
+    if (!v) {
+      v = new THREE.Group();
+      const poleH = base ? 2.6 : 1.7;
+      const pole = new THREE.Mesh(new THREE.BoxGeometry(0.08, poleH, 0.08), new THREE.MeshLambertMaterial({ color: 0x5b4127 }));
+      pole.position.set(0.32, poleH / 2, 0.32);
+      const flag = new THREE.Mesh(new THREE.BoxGeometry(base ? 0.7 : 0.48, base ? 0.42 : 0.3, 0.04), new THREE.MeshLambertMaterial({ color: 0xcfcfcf }));
+      v.add(pole, flag);
+      if (base) {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.06, 6, 32), new THREE.MeshBasicMaterial({ color: 0xcfcfcf }));
+        ring.rotation.x = Math.PI / 2; ring.position.y = 0.04;
+        v.add(ring); v.userData.ring = ring;
+      }
+      v.userData = Object.assign(v.userData, { flag, poleH, base });
+      scene.add(v);
+      buildingViews[k] = v;
+    }
+    v.position.set(b.x, b.y, b.z);
+    const col = b.owner >= 0 ? TEAM_COLORS[b.owner] : 0xcfcfcf;
+    v.userData.flag.material.color.setHex(col);
+    if (v.userData.ring) v.userData.ring.material.color.setHex(col);
+    const f = b.cp / CAPTURE_PTS, fh = v.userData.base ? 0.42 : 0.3;
+    v.userData.flag.position.set(0.32 + (v.userData.base ? 0.39 : 0.28), fh / 2 + (v.userData.poleH - fh) * f, 0.32);
+    v.visible = !hiddenCell(b.x, b.y, b.z);
+  });
+}
+
+// Move range: a "bucket fill" of flat tiles on every reachable cell, plus a marker for where you'll end up.
+const rangeTiles = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.92, 0.92),
+  new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.38, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }), 512);
+rangeTiles.frustumCulled = false;
+scene.add(rangeTiles);
+const destTile = new THREE.Mesh(new THREE.PlaneGeometry(0.96, 0.96),
+  new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.7, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }));
+destTile.rotation.x = -Math.PI / 2;
+scene.add(destTile);
+let range = new Map();
+let rangeKeys = [];
+let digMode = false;
+let attackMode = false;
+// Dig reach: a faint red box around the unit showing how far it can dig.
+const reachBox = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(7, 7, 7)),
+  new THREE.LineBasicMaterial({ color: 0xe0453a, transparent: true, opacity: 0.6 }));
+reachBox.visible = false;
+scene.add(reachBox);
+function showRange() {
+  const u = selUnit();
+  range = u.moved || falling || S.winner >= 0 ? new Map() : moveRange(S, u, moveOf(u));
+  const m = new THREE.Matrix4(), rot = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
+  let n = 0;
+  rangeKeys = [];
+  for (const k of range.keys()) {
+    if (n >= 512) break;
+    const [x, y, z] = k.split(',').map(Number);
+    if (hiddenCell(x, y, z)) continue;
+    rangeKeys.push(k);
+    m.makeTranslation(x + 0.5, y + 0.02, z + 0.5).multiply(rot);
+    rangeTiles.setMatrixAt(n++, m);
+  }
+  rangeTiles.count = n;
+  rangeTiles.instanceMatrix.needsUpdate = true;
+}
+function tintUnits() {
+  syncUnitGroups();
+  S.units.forEach((u, k) => {
+    const g = unitGroups[k];
+    g.visible = !u.dead;
+    g.userData.sprite.material.color.setHex(u.team === S.team && u.moved ? 0x8a8f96 : 0xffffff);
+    const f = u.hp / MAX_HP;
+    g.userData.hpFill.scale.x = Math.max(0.001, f);
+    g.userData.hpFill.position.x = -0.34 * (1 - f);
+    g.userData.hpFill.material.color.setHex(f > 0.5 ? 0x4ade80 : f > 0.25 ? 0xfacc15 : 0xef4444);
+  });
+  syncBuildings();
+}
+
+let yaw = 0.9, pitch = 0.8, dist = 10, camDist = 10;
+let fps = false;                      // first-person view of the selected unit
+// Commander: a free-flying spectator camera for looking around and screenshots. It never touches the game.
+let commander = false;
+const cmd = { p: new THREE.Vector3(), yaw: 0, pitch: 0 };
+const moveStick = { x: 0, y: 0 }, lookStick = { x: 0, y: 0 };
+const cmdKeys = {};
+const camTarget = new THREE.Vector3();
+
+/* ---------- Effects (visual only): falling leaves and smoke puffs ---------- */
+const fx = [];
+const smokeGeo = new THREE.IcosahedronGeometry(0.32, 0);
+const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function spawnSmoke(x, y, z) {
+  const puffs = reduceMotion ? 2 : 6;
+  for (let k = 0; k < puffs; k++) {
+    const a = k * (Math.PI * 2 / puffs) + 0.4;
+    const m = new THREE.Mesh(smokeGeo, new THREE.MeshBasicMaterial({ color: 0xd8d3ca, transparent: true, opacity: 0.8, depthWrite: false }));
+    m.position.set(x + Math.cos(a) * 0.2, y + 0.05 * k, z + Math.sin(a) * 0.2);
+    m.scale.setScalar(0.45);
+    scene.add(m);
+    fx.push({ kind: 'smoke', m, t: 0, life: 0.5 + 0.04 * k, vx: Math.cos(a) * 0.7, vy: 0.8, vz: Math.sin(a) * 0.7 });
+  }
+}
+function spawnFalling(x, y, z, mat, lootId) {
+  let ly = 0;
+  for (let yy = y - 1; yy >= 0; yy--) if (S.g[idx(x, yy, z)]) { ly = yy + 1; break; }
+  if (reduceMotion || ly >= y) { spawnSmoke(x + 0.5, y + 0.5, z + 0.5); return; }
+  if (lootId) hiddenLoot.add(lootId);
+  const m = new THREE.Mesh(blockGeo, new THREE.MeshLambertMaterial({ color: MAT_COLOR[mat] }));
+  m.position.set(x + 0.5, y + 0.5, z + 0.5);
+  scene.add(m);
+  fx.push({ kind: 'fall', m, vy: 0, land: ly + 0.5, spin: (x * 7 + z * 3) % 2 ? 3 : -3, lootId });
+}
+function playEvents() {
+  for (const ev of S.events) {
+    const x = ev.i % W, z = ((ev.i / W) | 0) % D, y = (ev.i / WD) | 0;
+    if (ev.type === 'crumble') spawnFalling(x, y, z, ev.m, ev.loot);
+    else spawnSmoke(x + 0.5, y + 0.5, z + 0.5);
+  }
+  S.events.length = 0;
+}
+function updateFx(dt) {
+  for (let n = fx.length - 1; n >= 0; n--) {
+    const f = fx[n];
+    let done = false;
+    if (f.kind === 'fall') {
+      f.vy -= 22 * dt;
+      f.m.position.y += f.vy * dt;
+      f.m.rotation.z += f.spin * dt;
+      f.m.rotation.x += f.spin * 0.6 * dt;
+      if (f.m.position.y <= f.land) {
+        spawnSmoke(f.m.position.x, f.land, f.m.position.z); done = true;
+        if (f.lootId) { hiddenLoot.delete(f.lootId); syncLoot(); }
+      }
+    } else {
+      f.t += dt;
+      const p = Math.min(1, f.t / f.life);
+      f.m.scale.setScalar(0.45 + 1.1 * p);
+      f.m.material.opacity = 0.8 * (1 - p);
+      f.m.position.x += f.vx * dt * (1 - p);
+      f.m.position.y += f.vy * dt * (1 - p);
+      f.m.position.z += f.vz * dt * (1 - p);
+      done = p >= 1;
+    }
+    if (done) { scene.remove(f.m); f.m.material.dispose(); fx.splice(n, 1); }
+  }
+}
+
+/* ---------- Loot view ---------- */
+const lootGeo = new THREE.BoxGeometry(0.34, 0.34, 0.34);
+const lootMeshes = new Map();
+const hiddenLoot = new Set();
+function syncLoot() {
+  const alive = new Set();
+  for (const l of S.loot) {
+    alive.add(l.id);
+    let m = lootMeshes.get(l.id);
+    if (!m) {
+      m = new THREE.Mesh(lootGeo, new THREE.MeshLambertMaterial({ color: MAT_COLOR[l.m] }));
+      scene.add(m); lootMeshes.set(l.id, m);
+    }
+    m.userData.base = new THREE.Vector3(l.x + 0.5, l.y + 0.25, l.z + 0.5);
+    m.scale.setScalar(Math.min(1.6, 1 + 0.15 * (l.n - 1)));
+    m.visible = !hiddenLoot.has(l.id);
+  }
+  for (const [id, m] of lootMeshes) if (!alive.has(id)) { scene.remove(m); m.material.dispose(); lootMeshes.delete(id); hiddenLoot.delete(id); }
+}
+function animateLoot(now) {
+  for (const m of lootMeshes.values()) {
+    const b = m.userData.base; if (!b) continue;
+    m.position.set(b.x, b.y + Math.sin(now / 300 + b.x) * 0.06, b.z);
+    m.rotation.y = now / 600 + b.z;
+  }
+}
+
+/* ---------- Moving: tap a blue tile, the unit walks there along the shortest path; Confirm commits ---------- */
+const SPEED = 4.5;                                  // cells per second
+const walker = { p: new THREE.Vector3(), path: [], seg: 0, t: 0, face: 0 };
+let pending = null;                                 // where the unit ends up if you confirm
+const tmpV = new THREE.Vector3();
+
+function resetWalker() {
+  const u = selUnit();
+  walker.p.set(u.x + 0.5, u.y, u.z + 0.5);
+  walker.path = []; walker.seg = 0; walker.t = 0;
+  walker.face = unitGroups[sel].rotation.y;
+  pending = [u.x, u.y, u.z];
+}
+// Shortest path inside the range, using the same step rule as the range itself.
+function pathWithin(from, to) {
+  const u = selUnit(), tk = cellKey(...to);
+  const prev = new Map([[cellKey(...from), null]]), q = [from];
+  for (let h = 0; h < q.length; h++) {
+    const c = q[h];
+    if (cellKey(...c) === tk) break;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const ny = stepTo(S, u, c[0], c[1], c[2], dx, dz);
+      if (ny < 0) continue;
+      const n = [c[0] + dx, ny, c[2] + dz], k = cellKey(...n);
+      if (!range.has(k) || prev.has(k)) continue;
+      prev.set(k, c); q.push(n);
+    }
+  }
+  if (!prev.has(tk)) return null;
+  const out = [];
+  for (let c = to; c; c = prev.get(cellKey(...c))) out.push(c);
+  return out.reverse();
+}
+function walkTo(target) {
+  const u = selUnit();
+  if (u.moved || falling) return;
+  const animating = walker.path.length > 1;
+  const from = animating ? walker.path[Math.min(walker.seg + 1, walker.path.length - 1)].cell : pending;
+  const cells = pathWithin(from, target);
+  if (!cells) return;
+  const pts = cells.map(c => ({ cell: c, x: c[0] + 0.5, y: c[1], z: c[2] + 0.5 }));
+  if (Math.hypot(walker.p.x - pts[0].x, walker.p.z - pts[0].z) > 0.05 || Math.abs(walker.p.y - pts[0].y) > 0.05)
+    pts.unshift({ cell: from, x: walker.p.x, y: walker.p.y, z: walker.p.z });   // continue from where the unit is
+  walker.path = pts; walker.seg = 0; walker.t = 0;
+  pending = target;
+}
+function stepWalker(dt) {
+  const u = selUnit(), p = walker.p;
+  if (walker.path.length > 1) {
+    let adv = dt * SPEED;
+    while (adv > 0 && walker.seg < walker.path.length - 1) {
+      const a = walker.path[walker.seg], b = walker.path[walker.seg + 1];
+      const len = Math.max(0.01, Math.hypot(b.x - a.x, b.z - a.z));
+      const need = (1 - walker.t) * len;
+      if (adv >= need) { adv -= need; walker.seg++; walker.t = 0; } else { walker.t += adv / len; adv = 0; }
+    }
+    if (walker.seg >= walker.path.length - 1) {
+      const e = walker.path[walker.path.length - 1];
+      p.set(e.x, e.y, e.z);
+      walker.path = [];
+    } else {
+      const a = walker.path[walker.seg], b = walker.path[walker.seg + 1], t = walker.t;
+      p.x = a.x + (b.x - a.x) * t;
+      p.z = a.z + (b.z - a.z) * t;
+      if (b.y > a.y) p.y = a.y + (b.y - a.y) * Math.min(1, t * 2.5);                                  // hop up early
+      else if (b.y < a.y) p.y = t < 0.5 ? a.y : a.y + (b.y - a.y) * Math.min(1, ((t - 0.5) * 2) ** 2); // walk off, then fall
+      else p.y = a.y;
+      if (Math.hypot(b.x - a.x, b.z - a.z) > 0.01) walker.face = Math.atan2(b.x - a.x, b.z - a.z);
+    }
+  } else {
+    const c = u.moved ? [u.x, u.y, u.z] : pending;
+    p.lerp(tmpV.set(c[0] + 0.5, c[1], c[2] + 0.5), 1 - Math.pow(0.0005, dt));
+  }
+  destTile.visible = !u.moved && range.size > 0 && !digMode;
+  rangeTiles.visible = !digMode;
+  reachBox.visible = digMode;
+  if (digMode) { const c = u.moved ? [u.x, u.y, u.z] : pending; reachBox.position.set(c[0] + 0.5, c[1] + 0.5, c[2] + 0.5); }
+  if (destTile.visible) destTile.position.set(pending[0] + 0.5, pending[1] + 0.03, pending[2] + 0.5);
+}
+
+const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+
+/* ---------- Attack: enemies in reach of where the selected unit is (or will be, once its move is confirmed) ---------- */
+function attackTargets() {
+  const u = selUnit();
+  if (u.acted || u.dead) return [];
+  const from = u.moved ? u : { ...u, x: pending[0], y: pending[1], z: pending[2] };
+  return S.units.map((b, k) => canAttack(S, from, b) ? k : -1).filter(k => k >= 0);
+}
+function enemyAtScreen(cx, cy) {
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const boxes = unitGroups.filter((g, k) => k < S.units.length && S.units[k].team !== S.team && !S.units[k].dead && g.userData.sprite.visible).map(g => g.userData.hit);
+  const h = raycaster.intersectObjects([...boxes, ...chunkMeshes], false)[0];
+  if (!h || h.object.userData.chunk) return -1;
+  return unitGroups.findIndex(g => g.userData.hit === h.object);
+}
+function tryAttack(cx, cy) {
+  const u = selUnit();
+  if (falling) return;
+  const k = enemyAtScreen(cx, cy);
+  if (k < 0) return;
+  if (!attackTargets().includes(k)) { flash('Out of reach: move next to it first'); refreshHud(); return; }
+  beginAction(S);
+  if (!u.moved && (pending[0] !== u.x || pending[1] !== u.y || pending[2] !== u.z)) {
+    if (!moveUnit(S, u, ...pending)) { endAction(S); flash('Planned move no longer valid'); refreshHud(); return; }
+  }
+  const b = S.units[k];
+  const hit = attack(S, u, b);
+  endAction(S);
+  if (!hit) { refreshHud(); return; }
+  spawnSmoke(b.x + 0.5, b.y + 0.7, b.z + 0.5);
+  flash((b.dead ? unitName(b) + ' is down' : unitName(b) + ' hit: ' + b.hp + ' HP left') + (u.dead ? ' · ' + unitName(u) + ' fell to the counter' : u.hp < 10 ? ' · counter: ' + u.hp + ' HP left' : ''));
+  setMode(null);
+  showRange();
+  refreshHud();
+}
+function setMode(m) {
+  digMode = m === 'dig';
+  attackMode = m === 'attack';
+  const d = document.querySelector('[data-act="dig"]'), at = document.querySelector('[data-act="attack"]');
+  d.classList.toggle('on', digMode); d.setAttribute('aria-pressed', String(digMode));
+  d.textContent = digMode ? 'Digging: tap blocks' : 'Dig';
+  at.classList.toggle('on', attackMode); at.setAttribute('aria-pressed', String(attackMode));
+  at.textContent = attackMode ? 'Attack: tap enemy' : 'Attack';
+}
+
+/* ---------- Long-press a unit: the nearest thing under the finger decides ---------- */
+function unitAtScreen(cx, cy) {
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const boxes = unitGroups.filter((g, k) => k < S.units.length && k !== sel && g.userData.sprite.visible && S.units[k].team === S.team && !S.units[k].dead).map(g => g.userData.hit);
+  const h = raycaster.intersectObjects([...boxes, ...chunkMeshes], false)[0];
+  if (!h || h.object.userData.chunk) return -1;
+  return unitGroups.findIndex(g => g.userData.hit === h.object);
+}
+
+/* ---------- Tap a block (dig mode): any face counts ---------- */
+function blockFromTap(cx, cy) {
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const h = raycaster.intersectObjects(chunkMeshes, false)[0];
+  if (!h) return null;
+  const i = h.object.userData.cells[h.instanceId];
+  return [i % W, (i / WD) | 0, ((i / W) | 0) % D];
+}
+function tryDig(cx, cy) {
+  const u = selUnit();
+  if (falling) return;
+  const c = blockFromTap(cx, cy);
+  if (!c) return;
+  // Digging happens from the unit's real cell, so an unconfirmed move is confirmed first.
+  // If that planned move is no longer valid (the world changed under it), drop it and dig from where the unit is.
+  beginAction(S);                               // move + dig + collapse + flood = one undoable action
+  if (!u.moved && (pending[0] !== u.x || pending[1] !== u.y || pending[2] !== u.z)) {
+    if (!moveUnit(S, u, ...pending)) { pending = [u.x, u.y, u.z]; flash('Planned move cancelled'); }
+  }
+  if (!canDig(S, u, ...c)) {
+    const m = S.g[idx(...c)];
+    flash(m === BEDROCK ? "Bedrock can't be dug" : 'Too far to dig');
+    endAction(S);
+    refreshHud();
+    return;
+  }
+  dig(S, u, ...c);
+  rebuildChanged();
+  settle();
+}
+let flashTimer = 0;
+function flash(msg) { $('status').textContent = msg; flashTimer = performance.now() + 1200; }
+
+/* ---------- Ghost-aware picking and tap snapping ---------- */
+const pickV = new THREE.Vector3(), pickS = new THREE.Vector2();
+// Is this world point inside the see-through circle in front of the selected unit (so you can't see it)?
+function isGhosted(p) {
+  if (ghost.uCut.value < 0.3) return false;
+  pickV.copy(p).applyMatrix4(camera.matrixWorldInverse);
+  if (-pickV.z >= ghost.uUnitDepth.value - 0.7) return false;
+  renderer.getDrawingBufferSize(pickS);
+  pickV.copy(p).project(camera);
+  const px = (pickV.x * 0.5 + 0.5) * pickS.x, py = (pickV.y * 0.5 + 0.5) * pickS.y;
+  return Math.hypot(px - ghost.uUnitPx.value.x, py - ghost.uUnitPx.value.y) < ghost.uRadiusPx.value * 0.85;
+}
+// Can the camera see this point? (A block in the way counts, unless it's see-through.)
+function pointVisible(p) {
+  const dir = pickV.copy(p).sub(camera.position), len = dir.length();
+  raycaster.set(camera.position, dir.normalize());
+  raycaster.far = len - 0.05;
+  const hits = raycaster.intersectObjects(chunkMeshes, false);
+  raycaster.far = Infinity;
+  for (const h of hits) if (!isGhosted(h.point)) return false;
+  return true;
+}
+// A tap that missed: snap to the nearest visible blue tile within a fingertip of it, else nothing.
+const SNAP_PX = 44;
+function snapTile(cx, cy) {
+  const r = canvas.getBoundingClientRect(), cands = [];
+  const v = new THREE.Vector3();
+  for (const k of rangeKeys) {
+    const [x, y, z] = k.split(',').map(Number);
+    v.set(x + 0.5, y + 0.05, z + 0.5).project(camera);
+    if (v.z > 1) continue;
+    const sx = r.left + (v.x * 0.5 + 0.5) * r.width, sy = r.top + (-v.y * 0.5 + 0.5) * r.height;
+    const d = Math.hypot(sx - cx, sy - cy);
+    if (d <= SNAP_PX) cands.push([d, x, y, z]);
+  }
+  cands.sort((a, b) => a[0] - b[0]);
+  for (const [, x, y, z] of cands.slice(0, 6)) if (pointVisible(new THREE.Vector3(x + 0.5, y + 0.1, z + 0.5))) return [x, y, z];
+  return null;
+}
+
+/* ---------- Tap a tile: raycast against blocks and range tiles ---------- */
+function cellFromTap(cx, cy) {
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const hits = raycaster.intersectObjects([...chunkMeshes, rangeTiles], false);
+  for (const h of hits) {
+    if (h.object === rangeTiles) return rangeKeys[h.instanceId].split(',').map(Number);
+    if (h.object.userData.chunk) {
+      if (isGhosted(h.point)) continue;                       // see-through blocks don't catch taps
+      if (!h.face || h.face.normal.y < 0.5) return null;      // only the top of a block counts
+      const i = h.object.userData.cells[h.instanceId];
+      return [i % W, ((i / WD) | 0) + 1, ((i / W) | 0) % D];
+    }
+  }
+  return null;
+}
+
+/* ---------- Units menu ---------- */
+const hex = c => '#' + c.toString(16).padStart(6, '0');
+function renderUnitsPanel() {
+  const panel = $('unitsPanel');
+  panel.innerHTML = '';
+  S.units.forEach((u, k) => {
+    if (u.team !== S.team || u.dead) return;
+    const b = document.createElement('button');
+    b.className = 'btn urow' + (k === sel ? ' cur' : '');
+    b.innerHTML = '<span class="dot" style="background:' + hex(TEAM_COLORS[u.team]) + '"></span>' + unitName(u) +
+      '<span class="sub">' + u.hp + ' HP · ' + (u.moved ? 'moved' : 'ready') + '</span>';
+    b.addEventListener('pointerdown', e => { e.preventDefault(); selectUnit(k); toggleUnits(false); });
+    panel.appendChild(b);
+  });
+}
+function toggleUnits(open) {
+  const panel = $('unitsPanel'), btn = $('unitsBtn');
+  const show = open === undefined ? panel.hidden : open;
+  panel.hidden = !show;
+  btn.setAttribute('aria-expanded', String(show));
+  btn.textContent = show ? 'Units ▾' : 'Units ▴';
+  if (show) renderUnitsPanel();
+}
+function selectUnit(k) {
+  if (k === sel) return;
+  unitGroups[sel].userData.vis.copy(walker.p);   // the old unit slides back to its real cell
+  sel = k;
+  resetWalker();
+  showRange();
+  refreshHud();
+}
+
+/* ---------- Build panel (your base) ---------- */
+function renderBuildPanel() {
+  const panel = $('buildPanel');
+  panel.innerHTML = '';
+  for (const type of TYPES) {
+    const t = UNIT_TYPES[type], b = document.createElement('button');
+    b.className = 'btn urow';
+    b.disabled = !canBuild(S, type);
+    b.innerHTML = '<span class="dot" style="background:' + hex(TEAM_COLORS[S.team]) + '"></span>' + t.label + '<span class="sub">' + t.cost + ' gold</span>';
+    b.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      if (falling || !canBuild(S, type)) return;
+      beginAction(S);
+      const nu = buildUnit(S, type);
+      endAction(S);
+      toggleBuild(false);
+      if (nu) flash(t.label + ' ready next turn');
+      refreshHud();
+    });
+    panel.appendChild(b);
+  }
+}
+function toggleBuild(open) {
+  const panel = $('buildPanel'), btn = $('buildBtn');
+  const show = open === undefined ? panel.hidden : open;
+  panel.hidden = !show;
+  btn.setAttribute('aria-expanded', String(show));
+  btn.textContent = show ? 'Build ▾' : 'Build ▴';
+  if (show) { toggleUnits(false); renderBuildPanel(); }
+}
+// Capture from where the unit is, or where it will be once its planned move is confirmed.
+function captureTarget() {
+  const u = selUnit();
+  if (!pending) return null;
+  return canCapture(S, u.moved ? u : { ...u, x: pending[0], y: pending[1], z: pending[2] });
+}
+
+/* ---------- HUD ---------- */
+const $ = id => document.getElementById(id);
+function refreshHud() {
+  const u = selUnit();
+  $('udot').style.background = hex(TEAM_COLORS[u.team]);
+  $('ustate').textContent = attackMode ? 'Attack mode · tap a red-ringed enemy' : digMode ? 'Dig mode · tap a block'
+    : u.acted ? 'Done this turn' : u.moved ? 'Moved · can still attack' : 'Ready · tap a blue tile';
+  $('pos').textContent = `x${u.x} y${u.y} z${u.z}`;
+  $('turn').textContent = S.turn + ' · ' + TEAM_NAMES[S.team] + "'s move";
+  $('uname').textContent = unitName(u) + ' · ' + u.hp + ' HP';
+  $('invwood').textContent = S.inv[WOOD];
+  syncLoot();
+  tintUnits();
+  $('hash').textContent = stateHash(S);
+  if (performance.now() > flashTimer) $('status').textContent = falling ? 'Collapsing…' : '';
+  document.querySelector('[data-act="confirm"]').disabled = u.moved || falling;
+  const nAct = S.cursor;
+  $('acount').textContent = nAct + (nAct === 1 ? ' action' : ' actions');
+  document.querySelector('[data-act="undo"]').disabled = falling || !S.cursor;
+  document.querySelector('[data-act="redo"]').disabled = falling || S.cursor >= S.history.length;
+  document.querySelector('[data-act="attack"]').disabled = u.acted || falling || S.winner >= 0;
+  document.querySelector('[data-act="capture"]').disabled = falling || !captureTarget();
+  $('gold').textContent = S.gold[S.team];
+  $('income').textContent = '(+' + incomeOf(S, S.team) + '/turn)';
+  $('buildBtn').disabled = falling || !TYPES.some(t => canBuild(S, t));
+  if (!$('buildPanel').hidden) renderBuildPanel();
+  $('winView').hidden = S.winner < 0;
+  if (S.winner >= 0) $('winText').textContent = TEAM_NAMES[S.winner] + ' wins!';
+  if (!$('unitsPanel').hidden) renderUnitsPanel();
+}
+
+/* ---------- Gravity animation: paces sim steps, sim stays deterministic ---------- */
+// Keep the planned destination valid after the world changes: if it's no longer reachable, plan to stay put.
+function syncPending() {
+  const u = selUnit();
+  if (u.moved || walker.path.length > 1) return;
+  if (!range.has(cellKey(...pending))) pending = [u.x, u.y, u.z];
+}
+let waterSteps = 0;
+function settle() {
+  if (falling) return;
+  falling = true;
+  waterSteps = 0;
+  refreshHud();
+  const tick = () => {
+    // If the selected unit's plan is "stay here", keep it glued to the unit when the unit falls or gets pushed.
+    const u = selUnit(), stay = !u.moved && walker.path.length <= 1 && pending[0] === u.x && pending[1] === u.y && pending[2] === u.z;
+    const moved = gravityStep(S);
+    let wet = false;
+    if (!moved) {                                  // as many water ticks as fit in ~12 ms, so floods play out in seconds
+      const t0 = performance.now();
+      for (let k = 0; k < 40 && waterSteps < 20000 && performance.now() - t0 < 12; k++, waterSteps++) { if (waterStep(S)) wet = true; else break; }
+    }
+    if (stay) pending = [u.x, u.y, u.z];
+    playEvents();
+    rebuildChanged();
+    refreshHud();
+    if (wet) $('status').textContent = 'Water flowing…';
+    if (moved || wet) setTimeout(tick, moved ? 80 : 33);
+    else { falling = false; endAction(S); showRange(); syncPending(); refreshHud(); }
+  };
+  tick();
+}
+
+// Camera collision: a solid voxel, or anything under the world.
+function solidPoint(x, y, z) {
+  if (y < 0) return true;
+  const X = Math.floor(x), Y = Math.floor(y), Z = Math.floor(z);
+  return inGrid(X, Y, Z) && S.g[idx(X, Y, Z)] !== AIR && !hiddenCell(X, Y, Z);
+}
+function ballBlocked(x, y, z, r) {
+  return solidPoint(x, y, z) ||
+    solidPoint(x + r, y, z) || solidPoint(x - r, y, z) ||
+    solidPoint(x, y + r, z) || solidPoint(x, y - r, z) ||
+    solidPoint(x, y, z + r) || solidPoint(x, y, z - r);
+}
+
+/* ---------- Actions ---------- */
+function act(a) {
+  const u = selUnit();
+  if (a === 'confirm') {
+    if (u.moved || falling) return;
+    const [x, y, z] = pending;
+    beginAction(S);
+    if (moveUnit(S, u, x, y, z)) showRange();
+    endAction(S);
+  } else if (a === 'layerUp' || a === 'layerDown') {
+    const cur = cut ? cut.y - 1 : H - 1;
+    if (layerMode === 'auto') { layerMode = 'manual'; layerManual = cur; }
+    layerManual = Math.max(1, Math.min(H - 1, layerManual + (a === 'layerUp' ? 1 : -1)));
+    updateCut();
+  } else if (a === 'layerAuto') {
+    if (layerMode === 'auto') { layerMode = 'manual'; layerManual = cut ? cut.y - 1 : H - 1; }
+    else layerMode = 'auto';
+    updateCut();
+  } else if (a === 'next') {
+    let k = -1;
+    for (let step = 1; step <= S.units.length; step++) {
+      const j = (sel + step) % S.units.length, v = S.units[j];
+      if (j !== sel && v.team === S.team && !v.dead && !v.moved) { k = j; break; }
+    }
+    if (k >= 0) selectUnit(k);
+    else flash(u.moved ? 'All units have moved' : 'No other unit is ready');
+  } else if (a === 'capture') {
+    if (falling) return;
+    const target = captureTarget();
+    if (!target) { flash('Nothing to capture here'); refreshHud(); return; }
+    beginAction(S);
+    if (!u.moved && (pending[0] !== u.x || pending[1] !== u.y || pending[2] !== u.z)) moveUnit(S, u, ...pending);
+    const ok = capture(S, u);
+    endAction(S);
+    if (ok) flash(target.owner === u.team ? (target.kind === 'base' ? 'Base captured!' : 'Village captured: +' + INCOME + '/turn')
+                                          : 'Capturing… ' + Math.max(0, target.cp) + ' left');
+    setMode(null);
+    resetWalker();
+    showRange();
+  } else if (a === 'undo' || a === 'redo') {
+    if (falling) return;
+    if (!(a === 'undo' ? undo(S) : redo(S))) { flash(a === 'undo' ? 'Nothing to undo' : 'Nothing to redo'); refreshHud(); return; }
+    hiddenLoot.clear();
+    syncUnitGroups();
+    rebuildChanged();
+    resetWalker();
+    showRange();
+  } else if (a === 'commander') {
+    commander = !commander;
+    document.body.classList.toggle('commander', commander);
+    if (commander) {                         // start exactly where the camera is, looking the same way
+      cmd.p.copy(camera.position);
+      const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+      cmd.yaw = Math.atan2(-dir.x, -dir.z); cmd.pitch = Math.asin(Math.max(-1, Math.min(1, dir.y)));
+      setMode(null); toggleUnits(false);
+    }
+    for (const k in cmdKeys) cmdKeys[k] = false;
+    moveStick.x = moveStick.y = lookStick.x = lookStick.y = 0;
+  } else if (a === 'view') {
+    fps = !fps;
+    pitch = fps ? 0.15 : 0.8;               // first person: look slightly down; third: back to overview
+    const b = document.querySelector('[data-act="view"]');
+    b.textContent = fps ? '3rd person' : '1st person';
+    b.setAttribute('aria-pressed', String(fps));
+  } else if (a === 'dig') {
+    setMode(digMode ? null : 'dig');
+  } else if (a === 'attack') {
+    setMode(attackMode ? null : 'attack');
+    if (attackMode && !attackTargets().length) flash('No enemy in reach');
+  } else if (a === 'endturn') {
+    if (falling) return;                     // wait for the current action to finish resolving
+    endTurn(S);
+    setMode(null);
+    const first = S.units.findIndex(v => v.team === S.team && !v.dead);
+    if (first >= 0 && first !== sel) selectUnit(first); else { resetWalker(); showRange(); }
+    const hurt = (S.drowned || []).map(id => unitName(S.units[id]) + (S.units[id].dead ? ' drowned' : ' is drowning'));
+    flash(hurt.length ? hurt.join(', ') : TEAM_NAMES[S.team] + "'s turn");
+    if (S.wnext.length) settle();
+  }
+  refreshHud();
+}
+
+function press(el) { el.classList.add('pressed'); }
+function release(el) { el.classList.remove('pressed'); }
+document.querySelectorAll('[data-act]').forEach(el => {
+  el.addEventListener('pointerdown', e => { e.preventDefault(); press(el); act(el.dataset.act); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => el.addEventListener(t, () => release(el)));
+  el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(el.dataset.act); } });
+});
+$('unitsBtn').addEventListener('pointerdown', e => { e.preventDefault(); toggleBuild(false); toggleUnits(); });
+$('buildBtn').addEventListener('pointerdown', e => { e.preventDefault(); toggleBuild(); });
+$('winUndo').addEventListener('click', () => act('undo'));
+$('winAgain').addEventListener('click', () => $('reset').dispatchEvent(new PointerEvent('pointerdown')));
+$('reset').addEventListener('pointerdown', e => {
+  e.preventDefault();
+  if (falling) return;
+  S = newState();
+  sel = 0;
+  setMode(null);
+  hiddenLoot.clear();
+  cut = null; cutCheckKey = ''; layerMode = 'auto'; layerManual = H - 1;
+  syncUnitGroups();
+  S.units.forEach((u, k) => { unitGroups[k].userData.vis.set(u.x + 0.5, u.y, u.z + 0.5); });
+  resetWalker();
+  rebuildAll(); showRange(); refreshHud();
+});
+
+window.addEventListener('keyup', e => { cmdKeys[e.key.toLowerCase()] = false; });
+window.addEventListener('blur', () => { for (const k in cmdKeys) cmdKeys[k] = false; });
+// Keyboard (desktop testing): C commander, Enter confirm, E end turn, G dig mode, V 1st/3rd person, [ ] layer down/up, L auto layer, N next unit, U units.
+window.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (commander) {                           // desktop: WASD fly, arrows look, Space/Shift up/down, C or Esc exit
+    if (k === 'c' || k === 'escape') { if (!e.repeat) act('commander'); return; }
+    if (k === 'p') { if (!e.repeat) takeScreenshot(); return; }
+    cmdKeys[k] = true; e.preventDefault(); return;
+  }
+  if (e.repeat) return;
+  if (k === 'c') { act('commander'); return; }
+  if (k === 'z') { act('undo'); return; }
+  if (k === 'k') { act('capture'); return; }
+  if (k === 'b') { toggleBuild(); return; }
+  if (k === 'y') { act('redo'); return; }
+  if (k === 'enter') { e.preventDefault(); act('confirm'); return; }
+  if (k === 'e') { act('endturn'); return; }
+  if (k === 'g') { act('dig'); return; }
+  if (k === 'v') { act('view'); return; }
+  if (k === 'n') { act('next'); return; }
+  if (k === 'x') { act('attack'); return; }
+  if (k === ']') { act('layerUp'); return; }
+  if (k === '[') { act('layerDown'); return; }
+  if (k === 'l') { act('layerAuto'); return; }
+  if (k === 'u') { toggleUnits(); return; }
+});
+
+/* ---------- Camera: swipe to rotate, pinch / wheel to zoom ---------- */
+const pts = new Map();
+let pinchStart = 0, distStart = dist;
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId);
+  pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pts.size === 2) {
+    const [p, q2] = [...pts.values()];
+    pinchStart = Math.hypot(p.x - q2.x, p.y - q2.y); distStart = dist;
+  }
+});
+canvas.addEventListener('pointermove', e => {
+  const p = pts.get(e.pointerId);
+  if (!p) return;
+  if (commander) { p.x = e.clientX; p.y = e.clientY; return; }
+  if (pts.size === 1) {
+    yaw -= (e.clientX - p.x) * 0.008;
+    pitch = Math.min(1.4, Math.max(fps ? -1.3 : 0.12, pitch + (e.clientY - p.y) * 0.006));
+  }
+  p.x = e.clientX; p.y = e.clientY;
+  if (pts.size === 2) {
+    const [a, b] = [...pts.values()];
+    const dNow = Math.hypot(a.x - b.x, a.y - b.y);
+    if (pinchStart > 0) dist = Math.min(24, Math.max(2.5, distStart * pinchStart / dNow));
+  }
+});
+const endPt = e => { pts.delete(e.pointerId); if (pts.size < 2) pinchStart = 0; };
+canvas.addEventListener('pointerup', endPt);
+canvas.addEventListener('pointercancel', endPt);
+canvas.addEventListener('wheel', e => { e.preventDefault(); dist = Math.min(24, Math.max(2.5, dist * (1 + e.deltaY * 0.001))); }, { passive: false });
+
+/* ---------- Commander sticks: each a fixed circle; drag inside to push ---------- */
+function bindStick(el, out) {
+  const knob = el.querySelector('.knob'), R = 46;
+  let id = null;
+  const set = e => {
+    const r = el.getBoundingClientRect();
+    let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+    const l = Math.hypot(dx, dy);
+    if (l > R) { dx *= R / l; dy *= R / l; }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    out.x = dx / R; out.y = -dy / R;
+  };
+  const end = e => { if (e.pointerId !== id) return; id = null; out.x = out.y = 0; knob.style.transform = ''; el.classList.remove('live'); };
+  el.addEventListener('pointerdown', e => { if (id !== null) return; e.preventDefault(); id = e.pointerId; el.setPointerCapture(id); el.classList.add('live'); set(e); });
+  el.addEventListener('pointermove', e => { if (e.pointerId === id) set(e); });
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+}
+bindStick($('stickMove'), moveStick);
+// Screenshot: render the 3D view once more (no buttons, no sticks) and offer it as a PNG.
+let downloadsApi = null;
+if (window.claude && window.claude.use) window.claude.use('downloads').then(d => { downloadsApi = d; }, () => {});
+function takeScreenshot() {
+  renderer.render(scene, camera);           // read the canvas right after drawing it
+  canvas.toBlob(async blob => {
+    if (!blob) return;
+    const f = $('shotFlash'); f.style.opacity = '0.8'; setTimeout(() => { f.style.opacity = '0'; }, 120);
+    const d = new Date(), pad = n => String(n).padStart(2, '0');
+    const name = `sim-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.png`;
+    if (downloadsApi) {
+      try { await downloadsApi.save({ filename: name, data: blob }); return; }
+      catch (e) { if (e && e.code === 'declined') return; }   // otherwise fall back to the preview
+    }
+    const img = $('shotImg');
+    if (img.src) URL.revokeObjectURL(img.src);
+    img.src = URL.createObjectURL(blob);
+    $('shotView').hidden = false;
+  }, 'image/png');
+}
+$('shotBtn').addEventListener('click', takeScreenshot);
+$('shotClose').addEventListener('click', () => { $('shotView').hidden = true; });
+bindStick($('stickLook'), lookStick);
+function stepCommander(dt) {
+  const k = cmdKeys;
+  const lx = lookStick.x + ((k.arrowright ? 1 : 0) - (k.arrowleft ? 1 : 0));
+  const ly = lookStick.y + ((k.arrowup ? 1 : 0) - (k.arrowdown ? 1 : 0));
+  cmd.yaw -= lx * 2.2 * dt;
+  cmd.pitch = Math.max(-1.5, Math.min(1.5, cmd.pitch + ly * 1.6 * dt));
+  const mx = moveStick.x + ((k.d ? 1 : 0) - (k.a ? 1 : 0));
+  const my = moveStick.y + ((k.w ? 1 : 0) - (k.s ? 1 : 0));
+  const up = (k[' '] ? 1 : 0) - (k.shift ? 1 : 0);
+  const cp = Math.cos(cmd.pitch);
+  const fx = -Math.sin(cmd.yaw) * cp, fy = Math.sin(cmd.pitch), fz = -Math.cos(cmd.yaw) * cp;   // flies where you look
+  const rx = Math.cos(cmd.yaw), rz = -Math.sin(cmd.yaw);
+  const sp = 12 * dt;
+  cmd.p.x += (fx * my + rx * mx) * sp;
+  cmd.p.y += (fy * my + up) * sp;
+  cmd.p.z += (fz * my + rz * mx) * sp;
+  cmd.p.y = Math.max(0.5, Math.min(H + 30, cmd.p.y));
+  camera.position.copy(cmd.p);
+  camera.lookAt(cmd.p.x + fx, cmd.p.y + fy, cmd.p.z + fz);
+}
+
+/* ---------- Tap vs. swipe on the canvas ---------- */
+let tap = null, touches = 0, pressTimer = 0;
+const LONG_PRESS = 450;
+function cancelPress() { clearTimeout(pressTimer); pressTimer = 0; }
+canvas.addEventListener('pointerdown', e => {
+  touches++;
+  tap = touches === 1 ? { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now() } : null;
+  cancelPress();
+  if (tap) {
+    const { x, y } = tap;
+    pressTimer = setTimeout(() => {          // held still long enough: try to select a unit there
+      pressTimer = 0;
+      if (!tap || commander) return;
+      const k = unitAtScreen(x, y);
+      if (k >= 0) {
+        selectUnit(k);
+        if (navigator.vibrate) navigator.vibrate(20);
+      }
+      tap = null;                            // a long press never counts as a tap
+    }, LONG_PRESS);
+  }
+});
+canvas.addEventListener('pointermove', e => {
+  if (tap && e.pointerId === tap.id && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 8) { tap = null; cancelPress(); }
+});
+canvas.addEventListener('pointerup', e => {
+  touches = Math.max(0, touches - 1);
+  cancelPress();
+  if (commander) { tap = null; return; }
+  if (tap && e.pointerId === tap.id && performance.now() - tap.t < 300) {
+    if (!$('unitsPanel').hidden || !$('buildPanel').hidden) { toggleUnits(false); toggleBuild(false); tap = null; return; }
+    if (attackMode) tryAttack(e.clientX, e.clientY);
+    else if (digMode) tryDig(e.clientX, e.clientY);
+    else {
+      let c = cellFromTap(e.clientX, e.clientY);
+      if (!c || !range.has(cellKey(...c))) c = snapTile(e.clientX, e.clientY);
+      if (c && range.has(cellKey(...c))) walkTo(c);
+    }
+  }
+  tap = null;
+});
+canvas.addEventListener('pointercancel', () => { touches = Math.max(0, touches - 1); tap = null; cancelPress(); });
+
+/* ---------- Ghost blocks: is anything between the camera and the selected unit? ---------- */
+const ghostV = new THREE.Vector3(), bufSize = new THREE.Vector2();
+let ghostOn = 0;
+function updateGhost(dt) {
+  let blocked = false;
+  if (!fps && !commander) {
+    const hx = walker.p.x, hy = walker.p.y + 0.6, hz = walker.p.z;
+    const dx = camera.position.x - hx, dy = camera.position.y - hy, dz = camera.position.z - hz;
+    const len = Math.hypot(dx, dy, dz);
+    for (let t = 0.55; t < len; t += 0.2) {
+      if (solidPoint(hx + dx / len * t, hy + dy / len * t, hz + dz / len * t)) { blocked = true; break; }
+    }
+  }
+  ghostOn += ((blocked ? 1 : 0) - ghostOn) * (1 - Math.pow(0.002, dt));
+  if (ghostOn < 0.01) { ghost.uCut.value = 0; return; }
+  camera.updateMatrixWorld();
+  renderer.getDrawingBufferSize(bufSize);
+  ghostV.set(walker.p.x, walker.p.y + 0.6, walker.p.z).applyMatrix4(camera.matrixWorldInverse);
+  const depth = -ghostV.z;
+  ghostV.set(walker.p.x, walker.p.y + 0.6, walker.p.z).project(camera);
+  ghost.uUnitPx.value.set((ghostV.x * 0.5 + 0.5) * bufSize.x, (ghostV.y * 0.5 + 0.5) * bufSize.y);
+  const focal = bufSize.y / (2 * Math.tan(camera.fov * Math.PI / 360));
+  ghost.uRadiusPx.value = Math.max(40, 2.4 * focal / Math.max(1, depth));
+  ghost.uUnitDepth.value = depth;
+  ghost.uCut.value = depth > 0 ? ghostOn : 0;
+}
+
+/* ---------- Loop ---------- */
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+let t0 = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - t0) / 1000); t0 = now;
+  stepWalker(dt);
+  updateCut();
+  if (flashTimer && now > flashTimer) { flashTimer = 0; $('status').textContent = falling ? 'Collapsing…' : ''; }
+
+  S.units.forEach((u, k) => {
+    const g = unitGroups[k];
+    if (!g) return;
+    const v = g.userData.vis;
+    if (k === sel) v.copy(walker.p);
+    else v.lerp(tmpV.set(u.x + 0.5, u.y, u.z + 0.5), 1 - Math.pow(0.0005, dt));
+    g.position.copy(v);
+  });
+  const sg = unitGroups[sel];
+  let dy = walker.face - sg.rotation.y;
+  dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+  sg.rotation.y += dy * (1 - Math.pow(0.0005, dt));
+  selRing.position.set(walker.p.x, walker.p.y + 0.04, walker.p.z);
+
+  updateFx(dt);
+  animateLoot(now);
+
+  const ox = Math.sin(yaw) * Math.cos(pitch), oy = Math.sin(pitch), oz = Math.cos(yaw) * Math.cos(pitch);
+  if (commander || fps) ghost.uCut.value = 0;
+  if (commander) {
+    stepCommander(dt);
+  } else if (fps) {
+    // First person: eyes of the selected unit, looking along the swipe direction.
+    camera.position.set(walker.p.x, walker.p.y + 0.85, walker.p.z);
+    camera.lookAt(camera.position.x - ox, camera.position.y - oy, camera.position.z - oz);
+    camTarget.copy(camera.position);
+  } else {
+    // Third person around the selected unit, always at the chosen distance. Blocks in the way turn see-through
+    // (ghost blocks, below); the camera is only lifted if it would end up inside the ground.
+    camTarget.lerp(tmpV.set(walker.p.x, walker.p.y + 0.9, walker.p.z), 1 - Math.pow(0.00005, dt));
+    camDist = dist;
+    camera.position.set(camTarget.x + ox * camDist, camTarget.y + oy * camDist, camTarget.z + oz * camDist);
+    const X = Math.floor(camera.position.x), Z = Math.floor(camera.position.z);
+    if (X >= 0 && X < W && Z >= 0 && Z < D) {
+      let top = 0;
+      for (let y = H - 1; y >= 0; y--) if (solidPoint(X + 0.5, y + 0.5, Z + 0.5)) { top = y + 1; break; }
+      if (camera.position.y < top + 0.6) camera.position.y = top + 0.6;
+    }
+    camera.lookAt(camTarget);
+  }
+  updateGhost(dt);
+  unitGroups.forEach((g, k) => {
+    const u = S.units[k];
+    if (!u) return;
+    const cx = k === sel ? Math.floor(walker.p.x) : u.x, cy = k === sel ? Math.floor(walker.p.y + 1e-4) : u.y, cz = k === sel ? Math.floor(walker.p.z) : u.z;
+    g.userData.sprite.visible = !(fps && !commander && k === sel) && !hiddenCell(cx, cy, cz);
+  });
+  selRing.visible = !fps && !commander;
+  const targets = attackMode ? attackTargets() : [];
+  unitGroups.forEach((g, k) => {
+    if (k >= S.units.length) return;
+    const camAng = Math.atan2(camera.position.x - g.position.x, camera.position.z - g.position.z);
+    g.userData.sprite.rotation.y = camAng - g.rotation.y;
+    g.userData.hpBar.rotation.y = camAng - g.rotation.y;
+    g.userData.hpBar.visible = g.userData.sprite.visible;
+    const ring = atkRing(k);
+    ring.visible = targets.includes(k) && g.userData.sprite.visible;
+    if (ring.visible) ring.position.set(g.position.x, g.position.y + 0.05, g.position.z);
+  });
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+resetWalker();
+camTarget.set(walker.p.x, walker.p.y + 0.9, walker.p.z);
+rebuildAll();
+showRange();
+refreshHud();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
