@@ -4,8 +4,8 @@
 (function (root) {
 'use strict';
 
-function runScenario(B, rounds = 6) {
-  const S = B.newState();
+function runScenario(B, rounds = 6, rules) {
+  const S = B.newState(rules);              // rules version: undefined = the latest
   const log = [['start', B.stateHash(S)]];
   const turns = [];                              // what a client would send each End turn (if the core can record it)
   const note = label => log.push([label, B.stateHash(S)]);
@@ -79,6 +79,7 @@ function runScenario(B, rounds = 6) {
     note(`end turn ${turn}`);
   }
   log.turns = turns;
+  log.rules = S.rules || 1;
   return log;
 }
 

@@ -23,12 +23,13 @@ function compare(name, log) {
 }
 
 (async () => {
-  const log = runScenario(B);
+  // golden.json was recorded from the original game, so it's checked under rules version 1.
+  const log = runScenario(B, 6, 1);
   compare('node', log);
 
   // Replay the match from its turn lists alone, as the server does, and as the opponent's browser does.
   const ends = log.filter(([l]) => l.startsWith('end turn')).map(([, h]) => h);
-  const R = B.newState();
+  const R = B.newState(log.rules);
   let bad = null;
   log.turns.forEach((t, k) => {
     const err = bad || B.replayTurn(R, t);
@@ -38,10 +39,28 @@ function compare(name, log) {
   if (bad) fail('replay: ' + bad);
   else console.log(`ok   replay: ${log.turns.length} turns from action lists alone give the same hashes`);
   // A tampered turn must be refused.
-  const T = B.newState(), cheat = JSON.parse(JSON.stringify(log.turns[0]));
+  const T = B.newState(log.rules), cheat = JSON.parse(JSON.stringify(log.turns[0]));
   cheat.groups[1][0].x += 9;                    // move further than the unit can walk
   const why = B.replayTurn(T, cheat);
   if (why) console.log(`ok   replay: tampered turn refused (${why})`); else fail('replay: tampered turn was accepted');
+
+  // The latest rules: same type vs same type dies in at most 2 hits from full health, the triangle's winner in 1.
+  const L = B.newState();
+  const hitsToKill = (a, d) => {
+    const A = { type: a, hp: 10 }, X = { type: d, hp: 10 };
+    for (let n = 1; n < 9; n++) {
+      X.hp -= B.damageOf(L, A, X); if (X.hp <= 0) return n;
+      if (!B.UNIT_TYPES[a].ranged && !B.UNIT_TYPES[d].ranged) { A.hp -= B.damageOf(L, X, A); if (A.hp <= 0) return Infinity; }
+    }
+    return Infinity;
+  };
+  const same = B.TYPES.map(t => hitsToKill(t, t)), tri = [['soldier', 'spearman'], ['spearman', 'knight'], ['knight', 'soldier']].map(([a, d]) => hitsToKill(a, d));
+  if (same.every(n => n <= 2) && tri.every(n => n === 1)) console.log(`ok   rules ${L.rules}: same vs same in ${same.join('/')} hits, triangle wins in 1`);
+  else fail(`rules ${L.rules}: same vs same ${same.join('/')}, triangle ${tri.join('/')}`);
+  // The latest rules must replay from turn lists too (the server checks every new match this way).
+  const log2 = runScenario(B), R2 = B.newState();
+  const bad2 = log2.turns.map(t => B.replayTurn(R2, t)).find(e => e);
+  if (bad2) fail('replay under latest rules: ' + bad2); else console.log(`ok   replay under rules ${R2.rules}: ${log2.turns.length} turns`);
 
   const { chromium } = require('playwright');
   const browser = await chromium.launch();
@@ -50,7 +69,7 @@ function compare(name, log) {
     await page.goto('file://' + path.join(__dirname, 'blank.html'));
     await page.addScriptTag({ path: path.join(root, 'sim-core.js') });
     await page.addScriptTag({ path: path.join(__dirname, 'scenario.js') });
-    compare('chromium', await page.evaluate(() => runScenario(BlockSim)));
+    compare('chromium', await page.evaluate(() => runScenario(BlockSim, 6, 1)));
 
     const game = await browser.newPage();
     const errors = [];

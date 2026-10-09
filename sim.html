@@ -1642,6 +1642,7 @@ async function openMatch(id) {
       m = await api('GET', path + '?since=0');
     }
     if (!NET.legacy) NET.team = m.you;
+    S.rules = m.rules || 1;                      // the rules this match started with (the map is the same for all)
     applyMatch(m, true);
     if (NET.team === 0 && !m.players[1] && !m.count) showShare();
     poll();

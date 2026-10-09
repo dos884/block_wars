@@ -129,6 +129,25 @@ const DAMAGE = {
   archer:   { soldier: 4, spearman: 4, knight: 3, archer: 5, builder: 6 },
   builder:  { soldier: 2, spearman: 2, knight: 1, archer: 2, builder: 3 },
 };
+// Rules versions. A match keeps the rules it started with, so stored games always replay exactly.
+//  1: the original numbers above.
+//  2: faster kills: same type vs same type dies in 2 hits from full health (base 6),
+//     and the triangle's winner kills outright, even when hurt (soldier > spearman > knight > soldier).
+const RULES = {
+  1: { damage: DAMAGE, beats: {} },
+  2: {
+    damage: {
+      //          soldier spearman knight archer builder
+      soldier:  { soldier: 6, spearman: 10, knight: 3, archer: 6, builder: 7 },
+      spearman: { soldier: 3, spearman: 6, knight: 10, archer: 6, builder: 7 },
+      knight:   { soldier: 10, spearman: 3, knight: 6, archer: 8, builder: 8 },
+      archer:   { soldier: 4, spearman: 4, knight: 3, archer: 6, builder: 6 },
+      builder:  { soldier: 2, spearman: 2, knight: 1, archer: 2, builder: 6 },
+    },
+    beats: { soldier: 'spearman', spearman: 'knight', knight: 'soldier' },
+  },
+};
+const LATEST_RULES = 2;
 const SOFT = [0, 1, 1, 0, 1, 0, 1];             // grass, dirt, wood, leaves: infantry can dig these
 const unitName = u => UNIT_TYPES[u.type].label + ' ' + (u.id + 1);
 
@@ -296,7 +315,8 @@ function setCell(s, i, v) {
   else { if (x < r.x0) r.x0 = x; if (x > r.x1) r.x1 = x; if (z < r.z0) r.z0 = z; if (z > r.z1) r.z1 = z; }
 }
 
-function newState() {
+function newState(rules = LATEST_RULES) {
+  if (!RULES[rules]) throw new Error('unknown rules version ' + rules);
   const w = new Uint8Array(N);
   const g = generate(SEED, w);
   const cx = W >> 1, cz = D >> 1;
@@ -304,7 +324,7 @@ function newState() {
   spots.push(...UNIT_SPAWNS);
   const units = spots.map(([team, x, z], k) => ({ id: k, type: 'soldier', team, x, y: groundY(g, x, z), z, hp: MAX_HP, moved: false, acted: false, dead: false }));
   const buildings = BUILDING_SPOTS.map(([x, z, kind, owner]) => ({ kind, owner, x, y: groundY(g, x, z), z, cp: CAPTURE_PTS, capBy: -1 }));
-  return { g, units, buildings, gold: [START_GOLD, START_GOLD], built: false, winner: -1, team: 0, turn: 1, moves: 0, events: [], loot: [], nextLoot: 1, inv: [0, 0, 0, 0, 0, 0, 0],
+  return { rules, g, units, buildings, gold: [START_GOLD, START_GOLD], built: false, winner: -1, team: 0, turn: 1, moves: 0, events: [], loot: [], nextLoot: 1, inv: [0, 0, 0, 0, 0, 0, 0],
            bh: blockHash(g), changed: [], region: null,
            w, wh: waterHash(w), wnext: [], wmark: new Int32Array(N), wgen: 1, dfail: new Int32Array(N),
            jr: null, jg: new Int32Array(N), jw: new Int32Array(N), jstamp: 0, history: [], cursor: 0, wchanged: [], wtick: 0 };
@@ -421,16 +441,21 @@ function canAttack(s, a, b) {
   return inReach(a, b);
 }
 // Damage scales with the attacker's health (a hurt unit hits softer), rounded, at least 1.
-const damageOf = (a, b) => Math.max(1, Math.floor((DAMAGE[a.type][b.type] * a.hp + 5) / 10));
+// Under rules 2 the triangle's winner kills outright.
+function damageOf(s, a, b) {
+  const r = RULES[s.rules || 1];
+  if (r.beats[a.type] === b.type) return b.hp;
+  return Math.max(1, Math.floor((r.damage[a.type][b.type] * a.hp + 5) / 10));
+}
 function hurt(s, u, d) {
   u.hp = Math.max(0, u.hp - d);
   if (!u.hp) { u.dead = true; resetCaptures(s); }
 }
 function attack(s, a, b) {
   if (!canAttack(s, a, b)) return false;
-  hurt(s, b, damageOf(a, b));
+  hurt(s, b, damageOf(s, a, b));
   // Survivors strike back if they fight up close and the attacker is next to them (archers never do).
-  if (!b.dead && !UNIT_TYPES[b.type].ranged && adjacent(a, b)) hurt(s, a, damageOf(b, a));
+  if (!b.dead && !UNIT_TYPES[b.type].ranged && adjacent(a, b)) hurt(s, a, damageOf(s, b, a));
   a.acted = true; a.moved = true;              // attacking finishes the unit's turn
   s.moves++;
   record(s, { t: 'attack', u: a.id, v: b.id });
@@ -802,7 +827,7 @@ function resolve(s) {
 
 const BlockSim = {
   W, D, H, WD, N, AIR, GRASS, DIRT, STONE, WOOD, BEDROCK, LEAVES, WFULL, MAX_HP, CAPTURE_PTS, INCOME, DIG_REACH, MAX_WATER_STEPS,
-  TEAM_NAMES, TEAM_COLORS, TYPES, UNIT_TYPES, DAMAGE,
+  TEAM_NAMES, TEAM_COLORS, TYPES, UNIT_TYPES, DAMAGE, RULES, LATEST_RULES, damageOf,
   idx, inGrid, mix, unitName, cellKey, newState, stateHash,
   solidAt, unitAt, stepTo, moveOf, moveRange, moveUnit, canDig, dig, canAttack, attack,
   canCapture, capture, canBuild, buildUnit, incomeOf,

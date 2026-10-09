@@ -72,6 +72,8 @@ const cols = db.prepare('PRAGMA table_info(matches)').all().map(c => c.name);
 if (!cols.includes('p0')) db.exec(`ALTER TABLE matches ADD COLUMN p0 TEXT; ALTER TABLE matches ADD COLUMN p1 TEXT;
   ALTER TABLE matches ADD COLUMN kind TEXT NOT NULL DEFAULT 'invite';
   CREATE INDEX IF NOT EXISTS matches_p0 ON matches (p0); CREATE INDEX IF NOT EXISTS matches_p1 ON matches (p1);`);
+// Each match keeps the rules version it started with (sim-core RULES); older matches are version 1.
+if (!cols.includes('rules')) db.exec('ALTER TABLE matches ADD COLUMN rules INTEGER NOT NULL DEFAULT 1');
 
 const q = {
   insertPlayer: db.prepare('INSERT INTO players (id, name, created, seen) VALUES (?, ?, ?, ?)'),
@@ -85,7 +87,7 @@ const q = {
   linkGoogle: db.prepare('UPDATE players SET google = ? WHERE id = ?'),
   moveSeats0: db.prepare('UPDATE matches SET p0 = ? WHERE p0 = ? AND (p1 IS NULL OR p1 != ?)'),
   moveSeats1: db.prepare('UPDATE matches SET p1 = ? WHERE p1 = ? AND (p0 IS NULL OR p0 != ?)'),
-  insertMatch: db.prepare('INSERT INTO matches (id, created, updated, t0, p0, p1, kind) VALUES (?, ?, ?, \'\', ?, ?, ?)'),
+  insertMatch: db.prepare('INSERT INTO matches (id, created, updated, t0, p0, p1, kind, rules) VALUES (?, ?, ?, \'\', ?, ?, ?, ?)'),
   getMatch: db.prepare('SELECT * FROM matches WHERE id = ?'),
   join: db.prepare('UPDATE matches SET p1 = ?, rev = rev + 1, updated = ? WHERE id = ? AND p1 IS NULL AND t1 IS NULL AND p0 != ?'),
   myGames: db.prepare(`SELECT * FROM matches WHERE p0 = ? OR p1 = ? ORDER BY (winner < 0) DESC, updated DESC LIMIT 50`),
@@ -118,10 +120,10 @@ const cleanName = s => String(s || '').normalize('NFC').replace(/[\u0000-\u001f\
 
 /* ---------- Live states: a match replayed up to its last turn ---------- */
 const cache = new Map();                       // id → { S, n }, in least-recently-used order
-function liveState(id) {
+function liveState(id, rules) {
   let c = cache.get(id);
   if (c) { cache.delete(id); cache.set(id, c); return c; }
-  const S = B.newState();
+  const S = B.newState(rules);
   const rows = q.turnsFrom.all(id, 0);
   for (const r of rows) {
     const err = B.replayTurn(S, JSON.parse(r.body));
@@ -250,12 +252,12 @@ function gameSummary(m, me) {
 }
 function matchView(m, since, me) {
   const turns = q.turnsFrom.all(m.id, since).map(r => ({ n: r.n, team: r.team, ...JSON.parse(r.body) }));
-  return { id: m.id, rev: m.rev, you: seatOf(m, me), names: [nameOf(m.p0), nameOf(m.p1)], players: [true, !!(m.p1 || m.t1)],
+  return { id: m.id, rules: m.rules, rev: m.rev, you: seatOf(m, me), names: [nameOf(m.p0), nameOf(m.p1)], players: [true, !!(m.p1 || m.t1)],
            winner: m.winner, count: m.turns, turns };
 }
 function createMatch(kind, p0, p1) {
   const id = newId(6), now = Date.now();
-  q.insertMatch.run(id, now, now, p0, p1, kind);
+  q.insertMatch.run(id, now, now, p0, p1, kind, B.LATEST_RULES);
   return id;
 }
 
@@ -388,7 +390,7 @@ async function handle(req, res) {
     if (seat !== m.turns % 2) throw new Fail(409, 'not your turn');
     if (m.winner >= 0) throw new Fail(409, 'match is over');
     if (text.length > MAX_BODY) throw new Fail(413, 'turn too big');
-    const live = liveState(id);
+    const live = liveState(id, m.rules);
     const t0 = Date.now();
     const err = B.replayTurn(live.S, turn);
     if (err) {
