@@ -7,6 +7,7 @@
 //
 //   GET  /api/config                         → { googleClientId, vapidKey }
 //   POST /api/players                        → { id, token, name }             new guest player
+//   DELETE /api/me                           → delete your player: running games count as a quit
 //   GET  /api/me                             → { id, name, google, searching, games: [...] }
 //   POST /api/me                  { name }   → rename
 //   POST /api/me/google     { credential }   → { id, name, switched }          link Google, or become the linked player
@@ -79,6 +80,10 @@ if (!cols.includes('quit')) db.exec('ALTER TABLE matches ADD COLUMN quit INTEGER
 
 const q = {
   insertPlayer: db.prepare('INSERT INTO players (id, name, created, seen) VALUES (?, ?, ?, ?)'),
+  openOf: db.prepare('SELECT * FROM matches WHERE (p0 = ? OR p1 = ?) AND winner < 0'),
+  deletePlayer: db.prepare('DELETE FROM players WHERE id = ?'),
+  deleteSessions: db.prepare('DELETE FROM sessions WHERE player = ?'),
+  deleteSubs: db.prepare('DELETE FROM pushsubs WHERE player = ?'),
   insertSession: db.prepare('INSERT INTO sessions (token, player, created) VALUES (?, ?, ?)'),
   playerByToken: db.prepare('SELECT players.* FROM sessions JOIN players ON players.id = sessions.player WHERE sessions.token = ?'),
   moveSessions: db.prepare('UPDATE sessions SET player = ? WHERE player = ?'),
@@ -115,7 +120,7 @@ const q = {
 
 const sha = t => crypto.createHash('sha256').update(String(t)).digest('hex');
 const newId = n => crypto.randomBytes(n).toString('base64url');
-const nameOf = id => (id && q.playerName.get(id) || {}).name || null;
+const nameOf = id => !id ? null : (q.playerName.get(id) || { name: 'Deleted player' }).name;
 
 /* ---------- Names: friendly defaults, and a light clean-up of what people type ---------- */
 const ADJ = ['Brave', 'Sneaky', 'Mighty', 'Clever', 'Rusty', 'Jolly', 'Swift', 'Sturdy', 'Lucky', 'Bold', 'Quiet', 'Grumpy', 'Happy', 'Wild', 'Tiny', 'Giant'];
@@ -288,6 +293,16 @@ async function handle(req, res) {
 
   if (parts[1] === 'me') {
     need(me);
+    if (route === 'DELETE me') {
+      for (const m of q.openOf.all(me.id, me.id)) {            // running games end as a quit; unjoined invites vanish
+        const seat = seatOf(m, me);
+        if (!m.p1 && !m.t1) { q.cancelAfterTurns.run(m.id); q.cancel.run(m.id); notify(m.id); continue; }
+        q.quit.run(seat, 1 - seat, now, m.id);
+        changed(m.id, seat === 0 ? m.p1 : m.p0);
+      }
+      q.dequeue.run(me.id); q.deleteSubs.run(me.id); q.deleteSessions.run(me.id); q.deletePlayer.run(me.id);
+      return send(res, 200, { deleted: true });
+    }
     if (route === 'GET me') {
       const games = q.myGames.all(me.id, me.id).map(m => gameSummary(m, me));
       const queued = q.queued.get(me.id);

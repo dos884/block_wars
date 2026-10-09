@@ -205,6 +205,15 @@ body.lobby #hud, body.lobby #controls, body.lobby #layers{display:none}
 .msheet .btn{height:52px;font-size:17px}
 .msheet .btn[hidden]{display:none}
 .msheet .danger{background:var(--brk);color:#fff}
+#acctView{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:11;display:flex;align-items:center;justify-content:center;padding:16px}
+#acctView[hidden]{display:none}
+#acctView .msheet{gap:12px}
+#acctView .msheet [hidden]{display:none}
+#aText{font-size:14px;font-weight:600;text-align:center;line-height:1.4}
+.lacct{display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:center}
+.linkbtn{appearance:none;background:none;border:none;font:inherit;font-size:13px;font-weight:700;color:var(--muted);
+  text-decoration:underline;text-underline-offset:3px;padding:4px;cursor:pointer}
+.linkbtn.warn{color:var(--brk)}
 #joinText{font-size:22px;max-width:360px}
 #shotView img{max-width:100%;max-height:72vh;border-radius:10px;border:2px solid #fff}
 </style>
@@ -272,6 +281,9 @@ body.lobby #hud, body.lobby #controls, body.lobby #layers{display:none}
       <div id="lPushNote" hidden></div>
       <div id="gsi"></div>
       <div id="lGoogle" hidden></div>
+      <div class="lacct">
+        <button class="linkbtn warn" id="lDelete">Delete my player</button>
+      </div>
     </div>
   </div>
 </div>
@@ -291,6 +303,15 @@ body.lobby #hud, body.lobby #controls, body.lobby #layers{display:none}
   <div style="display:flex;gap:10px">
     <button class="btn" id="joinYes" style="padding:12px 20px;background:var(--cmd);color:#22303b">Join as Red</button>
     <button class="btn" id="joinNo" style="padding:12px 20px">Just watch</button>
+  </div>
+</div>
+
+<div id="acctView" hidden>
+  <div class="msheet" role="dialog" aria-modal="true" aria-labelledby="aTitle">
+    <div class="mtitle" id="aTitle">Your player</div>
+    <div id="aText"></div>
+    <button class="btn" id="aMain">OK</button>
+    <button class="btn" id="aAlt">Cancel</button>
   </div>
 </div>
 
@@ -1457,6 +1478,7 @@ const winnerNow = () => S.winner >= 0 ? S.winner : NET.winner;
 const myTurn = () => !NET.id || (S.team === NET.team && !NET.sending && !NET.done);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const onWeb = location.protocol.startsWith('http');                    // opened as a file: hot-seat only
+const HOME = location.pathname.replace(/[^/]*$/, '');                     // '/' live, '/preview/' for a preview copy
 const DEBUG = !onWeb || new URLSearchParams(location.search).has('debug');   // dev tools: state hash, Commander camera
 function stored(key, value) {
   try {
@@ -1541,7 +1563,7 @@ function gameRow(g) {
   const st = b.querySelector('.st');
   st.textContent = status;
   st.classList.toggle('turn', g.winner < 0 && g.myTurn);
-  b.addEventListener('click', () => { location.href = '/?m=' + g.id; });
+  b.addEventListener('click', () => { location.href = HOME + '?m=' + g.id; });
   return b;
 }
 async function refreshLobby() {
@@ -1571,7 +1593,7 @@ async function waitForOpponent() {
   while (searching && lobbyOpen) {
     try {
       const r = await api('GET', '/quick');
-      if (r.match) { location.href = '/?m=' + r.match; return; }
+      if (r.match) { location.href = HOME + '?m=' + r.match; return; }
       if (!r.waiting) { setSearching(false); return; }
     } catch { await sleep(3000); }
   }
@@ -1580,14 +1602,14 @@ async function quickPlay() {
   enablePush(true);                            // a good moment to ask: "we'll tell you when it starts"
   try {
     const r = await api('POST', '/quick');
-    if (r.match) { location.href = '/?m=' + r.match; return; }
+    if (r.match) { location.href = HOME + '?m=' + r.match; return; }
     setSearching(true);
   } catch (e) { flash(e.message); }
 }
 async function playFriend() {
   try {
     const m = await api('POST', '/matches');
-    location.href = '/?m=' + m.id;
+    location.href = HOME + '?m=' + m.id;
   } catch (e) { flash("Couldn't start a match: " + e.message); }
 }
 async function rename() {
@@ -1629,7 +1651,7 @@ function netLine() {
   $('shareBtn').hidden = !waitingForJoin;
 }
 function showShare() {
-  $('shareLink').value = location.origin + '/?m=' + NET.id;
+  $('shareLink').value = location.origin + HOME + '?m=' + NET.id;
   $('shareView').hidden = false;
 }
 async function shareLink() {
@@ -1752,6 +1774,29 @@ $('lLocal').addEventListener('click', closeLobby);
 $('lNotify').addEventListener('click', async () => { if (!await enablePush(true)) flash('Notifications are not available here'); updatePushUi(); });
 $('lName').addEventListener('change', rename);
 $('lName').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
+
+/* ---------- Your player: deleting it (logins live on this device; there's no other way back in) ---------- */
+function acct({ title, text, main, onMain, danger }) {
+  $('aTitle').textContent = title;
+  $('aText').textContent = text || '';
+  $('aMain').textContent = main; $('aMain').onclick = onMain;
+  $('aMain').className = 'btn' + (danger ? ' danger' : '');
+  $('aAlt').onclick = closeAcct;
+  $('acctView').hidden = false;
+}
+const closeAcct = () => { $('acctView').hidden = true; };
+$('lDelete').addEventListener('click', () => acct({
+  title: 'Delete ' + me.name + '?',
+  text: 'Your games in progress count as a quit (your opponents win), and your player is removed for good. This cannot be undone.',
+  main: 'Delete for good', danger: true,
+  onMain: async () => {
+    try {
+      await api('DELETE', '/me');
+      stored('bw:player', null);
+      location.href = HOME;
+    } catch (e) { $('aText').textContent = e.message; }
+  },
+}));
 function openMenu() {
   const canQuit = NET.id && NET.team >= 0 && winnerNow() < 0 && !NET.done;
   $('mTitle').textContent = 'Menu';
@@ -1767,7 +1812,7 @@ const closeMenu = () => { $('menuView').hidden = true; };
 $('menuBtn').addEventListener('click', openMenu);
 $('mClose').addEventListener('click', closeMenu);
 $('menuView').addEventListener('click', e => { if (e.target === $('menuView')) closeMenu(); });
-$('mLobby').addEventListener('click', () => { closeMenu(); if (NET.id) location.href = '/'; else openLobby(); });
+$('mLobby').addEventListener('click', () => { closeMenu(); if (NET.id) location.href = HOME; else openLobby(); });
 $('mRestart').addEventListener('click', () => { closeMenu(); $('reset').dispatchEvent(new PointerEvent('pointerdown')); });
 $('mQuit').addEventListener('click', () => {       // step 2: say what quitting means, then confirm
   const opp = oppName();
@@ -1781,7 +1826,7 @@ $('mQuitYes').addEventListener('click', async () => {
   try {
     const r = await api('POST', `/matches/${NET.id}/quit`);
     closeMenu();
-    if (r.cancelled) { location.href = '/'; return; }
+    if (r.cancelled) { location.href = HOME; return; }
     NET.winner = r.winner; NET.quit = NET.team; NET.done = true;
     setMode(null); showRange(); refreshHud();
   } catch (e) { flash(e.message); closeMenu(); }
@@ -1803,7 +1848,7 @@ $('winUndo').addEventListener('click', () => act('undo'));
 $('winAgain').addEventListener('click', () => {
   if (!NET.id) $('reset').dispatchEvent(new PointerEvent('pointerdown'));
   else if (!NET.done && S.winner === NET.team) act('endturn');
-  else location.href = '/';
+  else location.href = HOME;
 });
 $('shareBtn').addEventListener('click', showShare);
 $('shareGo').addEventListener('click', shareLink);

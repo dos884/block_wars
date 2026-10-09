@@ -126,6 +126,16 @@ function vapidValid(auth, publicKey) {
     const lone = await api('POST', '/matches', null, a);
     const c = await api('POST', `/matches/${lone.id}/quit`, null, a);
     ok(c.cancelled && (await api('GET', `/matches/${lone.id}`)).status === 404, 'quitting an unjoined invite cancels it');
+
+    // Deleting your player: running games count as a quit, unjoined invites vanish, and you're gone.
+    const d1 = await player(), d2 = await player();
+    const dm = await api('POST', '/matches', null, d1); await api('POST', `/matches/${dm.id}/join`, null, d2);
+    const dLone = await api('POST', '/matches', null, d1);
+    ok((await api('DELETE', '/me', null, d1)).deleted, 'delete your player');
+    ok((await api('GET', '/me', null, d1)).status === 401, 'its logins stop working');
+    const dg = (await api('GET', '/me', null, d2)).games.find(g => g.id === dm.id);
+    ok(dg && dg.winner === dg.team && dg.quit === 0 && dg.opponent === 'Deleted player', 'their opponent wins, vs "Deleted player"');
+    ok((await api('GET', `/matches/${dLone.id}`)).status === 404, 'their unjoined invite is gone');
   } finally {
     await stop(srv);
     pushSrv.close();
