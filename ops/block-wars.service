@@ -8,6 +8,7 @@ Group=blockwars
 WorkingDirectory=/srv/block_wars
 ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning /srv/block_wars/server/server.js
 Environment=NODE_ENV=production PORT=8787 DB=/var/lib/block_wars/bw.sqlite
+EnvironmentFile=-/etc/block-wars.env
 StateDirectory=block_wars
 Restart=always
 RestartSec=2

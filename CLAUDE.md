@@ -10,6 +10,8 @@
 - He doesn't care about programmer simplicity. He cares about "hassle-free × good" for players and for him.
 
 ## The game
+- Shown to players as "Cube Wars" (domain cubewars.io; `GAME_NAME` in sim.html, manifest, sw.js). Repo/working name: Block Wars.
+- Quality bar (2026-10-09): ship a solid 6-7/10 product that can grow to 8. Polish matters, scope creep doesn't.
 - Mobile-first (Android focus), web app, turn-based. "Advance Wars × Minecraft", no redstone.
 - Plan: one obvious, cute base game first; modders later.
 - Base rules copied from Advance Wars: fixed bases build units (one unit per turn), villages give income, capture enemy base to win.
@@ -18,7 +20,8 @@
 ## Current code
 - `sim-core.js`: the deterministic sim (pure, no Three.js/DOM). Loads as a browser script (`window.BlockSim`) or a Node module. Also: action recording into the undo journal, `turnGroups`, `replayTurn` (shared by server and client).
 - `sim.html`: the view/UI (Three.js r128 from cdnjs). Hot-seat by default; online when opened as `/?m=<match id>`.
-- `server/server.js`: match server, `node:http` + `node:sqlite` (Node 22, no npm deps). Replays and hash-checks every turn.
+- `server/server.js`: `node:http` + `node:sqlite` + `node:crypto` (Node 22, no npm deps). Guest players (per-device sessions), optional Google link, invite + quick-play matches, Web Push (VAPID, payload-less), replays and hash-checks every turn.
+- `sw.js` (notifications only, deliberately no offline cache), `manifest.webmanifest`, icons from `icon.svg` via `tools/make-icons.js`.
 - `test/`: `npm test` = determinism vs golden hashes (Node + Chromium), server API checks, and a two-browser online match.
   `golden.json` was recorded from the ORIGINAL pre-split game (`make-golden.js`); a sim change that should alter results needs a deliberate re-record.
 - `ops/` + `deploy.sh`: Caddyfile, systemd units (server, nightly backup). Run `./deploy.sh` as root to ship.
@@ -49,9 +52,10 @@ Known gaps: archers have no line-of-sight; digging is unlimited per turn; dam br
 1. DONE: sim split into `sim-core.js`.
 2. DONE: Node + SQLite server. `POST /api/matches` (create → Blue token), `POST /api/matches/:id/join` (Red), `GET /api/matches/:id?since=n&rev=r` (long-poll ≤25 s), `POST /api/matches/:id/turns` (replay + validate + hash check).
 3. DONE: Caddy serves https://cubewars.io (static from `/var/www/block_wars`, `/api/*` → 127.0.0.1:8787). Server runs as systemd `block-wars` (user `blockwars`, DB `/var/lib/block_wars/bw.sqlite`). Nightly backup 04:00 to `/var/backups/block_wars`, 14 days kept (same disk only).
-4. NEXT: accounts, matchmaking, approximate Elo, push notification "your turn".
+4. DONE (changed by the user): no Elo. Guest accounts by default (random friendly name, editable), optional "Continue with Google" to carry games across devices. Lobby: Quick play (persistent 24 h queue, pairs with whoever waits, coin flip for Blue), Play a friend (invite link), Pass & play (hot-seat), Your games list. "Your turn" Web Push notifications. Installable PWA.
+   Google sign-in needs `GOOGLE_CLIENT_ID=...` in `/etc/block-wars.env` (then `systemctl restart block-wars`); the button is hidden until then.
 5. Fog of war last.
 
 How online works: in-turn actions stay local with undo/redo. Each successful action is recorded in its journal entry; a turn = the journal entries still in effect ("groups", e.g. [move, dig]). End turn sends `{n, groups, hash}`; the server replays the groups (a dig's collapse/flood resolved inside its group, same as the browser's settle), compares the hash, then End turn + water. The opponent's browser replays the same way.
 
-Known gaps (online): an unsent turn is lost on reload; the opponent's turn appears instantly (no replay animation); the seat token lives in the browser's localStorage (lost if cleared; accounts fix this); no cleanup of old matches; a dam-break turn costs ~1.7 s of server CPU and blocks the server meanwhile (fine now; worker thread if it matters).
+Known gaps (online): no forfeit/timeout for abandoned games yet (an opponent who never returns blocks the game forever); an unsent turn is lost on reload; the opponent's turn appears instantly (no replay animation); a guest who clears browser data loses their player (Google link fixes this); no cleanup of old matches; a dam-break turn costs ~1.7 s of server CPU and blocks the server meanwhile (fine now; worker thread if it matters).

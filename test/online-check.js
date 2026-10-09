@@ -1,5 +1,5 @@
-// Two real browsers play each other through the server: Blue creates a match with the button, Red opens the link,
-// they trade turns, and both screens must agree on the state hash after every turn.
+// Real browsers play each other through the server: Blue starts a friend match from the lobby, Red opens the link,
+// they trade turns, and both screens must agree on the state hash after every turn. Then two strangers use Quick play.
 // SITE=https://cubewars.io node test/online-check.js runs it against the live server instead of a local one.
 'use strict';
 const { spawn } = require('node:child_process');
@@ -30,7 +30,12 @@ const ok = (cond, msg) => { console.log((cond ? 'ok   ' : 'FAIL ') + msg); if (!
   try {
     const blue = await open(), red = await open();
     await blue.goto(site + '/');
-    await blue.click('#onlineBtn');
+    await blue.waitForFunction(() => document.getElementById('lName').value.length > 0, null, { timeout: 15000 });
+    ok(await blue.isVisible('#lobby'), `lobby opens, Blue is "${await blue.inputValue('#lName')}"`);
+    await blue.fill('#lName', 'Blue Tester');
+    await blue.press('#lName', 'Enter');
+    await blue.waitForTimeout(300);
+    await blue.click('#lFriend');
     await blue.waitForURL(/\?m=/);
     await blue.waitForSelector('#shareView:not([hidden])');
     const link = await blue.inputValue('#shareLink');
@@ -39,7 +44,7 @@ const ok = (cond, msg) => { console.log((cond ? 'ok   ' : 'FAIL ') + msg); if (!
     ok(await waitLine(blue, 'Your turn'), `Blue: "${await line(blue)}"`);
 
     await red.goto(link.replace(/^https?:\/\/[^/]+/, site));
-    ok(await waitLine(red, 'Waiting for Blue'), `Red joins: "${await line(red)}"`);
+    ok(await waitLine(red, 'Waiting for Blue Tester'), `Red joins and sees the name: "${await line(red)}"`);
     await red.keyboard.press('e');
     ok((await red.textContent('#status')).includes('Not your turn'), 'Red cannot end Blue\'s turn');
 
@@ -48,7 +53,7 @@ const ok = (cond, msg) => { console.log((cond ? 'ok   ' : 'FAIL ') + msg); if (!
     await blue.click('#buildPanel button:first-child');
     ok((await blue.textContent('#acount')).startsWith('1'), 'Blue builds a soldier (1 action)');
     await blue.keyboard.press('e');
-    ok(await waitLine(blue, 'Waiting for Red'), `Blue sent the turn: "${await line(blue)}"`);
+    ok(await waitLine(blue, 'Waiting for '), `Blue sent the turn: "${await line(blue)}"`);
     ok(await waitLine(red, 'Your turn'), `Red receives it: "${await line(red)}"`);
     ok(await hash(red) === await hash(blue), `same hash on both screens after turn 1 (${await hash(red)})`);
 
@@ -57,7 +62,7 @@ const ok = (cond, msg) => { console.log((cond ? 'ok   ' : 'FAIL ') + msg); if (!
     await red.click('#buildPanel button:nth-child(2)');
     await red.keyboard.press('e');
     ok(await waitLine(blue, 'Your turn'), 'Blue receives Red\'s turn');
-    ok(await waitLine(red, 'Waiting for Blue'), 'Red sees its turn was sent');
+    ok(await waitLine(red, 'Waiting for Blue Tester'), 'Red sees its turn was sent');
     ok(await hash(red) === await hash(blue), `same hash on both screens after turn 2 (${await hash(blue)})`);
 
     // Reloading keeps your seat and rebuilds the match from the server.
@@ -71,7 +76,29 @@ const ok = (cond, msg) => { console.log((cond ? 'ok   ' : 'FAIL ') + msg); if (!
     const third = await open();
     await third.goto(link.replace(/^https?:\/\/[^/]+/, site));
     ok(await waitLine(third, 'Watching'), `a third visitor watches: "${await line(third)}"`);
-    ok(!(await blue.isVisible('#onlineBtn')) && !(await blue.isVisible('#reset')), 'no Play online / Reset buttons inside a match');
+    ok(!(await blue.isVisible('#reset')) && !(await blue.isVisible('#hashBox')), 'no Reset button or debug hash inside a match');
+
+    // Menu → the lobby lists the game with whose turn it is.
+    await red.click('#menuBtn');
+    await red.waitForSelector('#lGames .game');
+    ok((await red.textContent('#lGames .game')).includes('Their turn') && (await red.textContent('#lGames .game')).includes('Blue Tester'),
+      `Red's lobby: "${(await red.textContent('#lGames .game')).trim()}"`);
+
+    // Quick play between two strangers: the first waits, the second is paired, both land in the match.
+    // Not on the live site: the test players could get paired with a real person waiting there.
+    if (!process.env.SITE) {
+    const q1 = await open(), q2 = await open();
+    await q1.goto(site + '/'); await q2.goto(site + '/');
+    for (const p of [q1, q2]) await p.waitForFunction(() => document.getElementById('lName').value.length > 0, null, { timeout: 15000 });
+    await q1.click('#lQuick');
+    ok(await q1.waitForSelector('#lSearch:not([hidden])', { timeout: 5000 }).then(() => true, () => false), 'quick play: first player is looking');
+    await q2.click('#lQuick');
+    await Promise.all([q1.waitForURL(/\?m=/, { timeout: 30000 }), q2.waitForURL(/\?m=/, { timeout: 30000 })]);
+    ok(q1.url() === q2.url(), 'quick play: both players land in the same match');
+    ok(await waitLine(q1, 'You are') && await waitLine(q2, 'You are'), `seated: "${await line(q1)}" / "${await line(q2)}"`);
+    await q1.screenshot({ path: path.join(__dirname, 'out', 'quick-match.png') });
+    }
+    await red.screenshot({ path: path.join(__dirname, 'out', 'lobby.png') });
     await blue.screenshot({ path: path.join(__dirname, 'out', 'online-blue.png') });
     ok(!errors.length, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
   } finally {

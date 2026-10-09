@@ -3,7 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>sim</title>
+<title>Cube Wars</title>
+<meta name="theme-color" content="#bcd6e8">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800&display=swap" rel="stylesheet">
@@ -132,9 +136,48 @@ body:not(.commander) .cmdui{display:none}
 #shareView{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px;color:#fff;font-weight:800;text-align:center}
 #shareView[hidden]{display:none}
 #shareLink{width:min(92vw,420px);font:inherit;font-size:15px;padding:10px;border-radius:10px;border:2px solid #fff;text-align:center}
-#netRow{display:flex;align-items:center;gap:6px;margin-top:2px}
+#netRow{display:flex;align-items:center;gap:6px;margin-top:2px;flex-wrap:wrap}
+body.lobby #hud, body.lobby #controls, body.lobby #layers{display:none}
+#lobby{position:fixed;inset:0;z-index:7;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  display:flex;justify-content:center;align-items:flex-start;
+  padding:calc(env(safe-area-inset-top,0px) + 24px) 16px calc(env(safe-area-inset-bottom,0px) + 24px);
+  background:linear-gradient(to bottom, color-mix(in srgb, var(--sky) 72%, transparent), color-mix(in srgb, var(--sky) 45%, transparent) 40%, color-mix(in srgb, var(--sky) 85%, transparent))}
+#lobby[hidden]{display:none}
+.lcard{width:100%;max-width:420px;display:flex;flex-direction:column;gap:14px}
+.ltitle{text-align:center;margin:8px 0 0}
+.ltitle h1{margin:0;font-size:44px;font-weight:800;letter-spacing:-.5px;line-height:1;
+  text-shadow:0 3px 0 var(--sky),0 -2px 0 var(--sky),2px 0 0 var(--sky),-2px 0 0 var(--sky)}
+.ltitle .tag{color:var(--ink);font-size:14px;font-weight:700;margin-top:6px}
+.lpanel{background:var(--panel);border:2px solid var(--ink);border-radius:16px;padding:12px;
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);display:flex;flex-direction:column;gap:10px}
+.lnamerow{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted)}
+#lName{flex:1;min-width:0;font:inherit;font-size:17px;font-weight:800;color:var(--ink);background:transparent;
+  border:none;border-bottom:2px dashed var(--muted);padding:4px 2px;border-radius:0}
+#lName:focus{outline:none;border-bottom-color:var(--cmd)}
+.lbig{height:64px;font-size:20px;background:var(--cmd);color:#22303b}
+.lrow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.lrow .btn{height:50px;font-size:16px}
+#lSearch{text-align:center;font-weight:800;display:flex;flex-direction:column;gap:6px;align-items:center}
+#lSearch[hidden]{display:none}
+#lSearch .sub{font-weight:600;font-size:13px;color:var(--muted)}
+.spin{display:inline-block;width:14px;height:14px;border:3px solid var(--muted);border-top-color:var(--cmd);border-radius:50%;
+  animation:spin .8s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+.lh{margin:2px 2px -4px;font-size:13px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+#lGames{display:flex;flex-direction:column;gap:8px}
+.game{display:flex;align-items:center;gap:10px;padding:10px 12px;text-align:left;font-size:15px;box-shadow:0 3px 0 var(--ink);width:100%}
+.game .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.game .st{font-size:13px;font-weight:800;padding:3px 8px;border-radius:999px;border:2px solid var(--ink);white-space:nowrap}
+.game .st.turn{background:var(--cmd);color:#22303b}
+.game.over{opacity:.6}
+.lempty{color:var(--muted);font-size:14px;text-align:center;padding:6px}
+.lfoot{display:flex;flex-direction:column;gap:8px;align-items:center;font-size:13px;color:var(--muted);text-align:center}
+.lfoot .btn{padding:8px 14px;font-size:14px;box-shadow:0 3px 0 var(--ink)}
+.lfoot [hidden]{display:none}
+#hashBox[hidden]{display:none}
 #netRow[hidden]{display:none}
-#onlineBtn[hidden],#reset[hidden],#winUndo[hidden]{display:none!important}
+#reset[hidden],#winUndo[hidden],#menuBtn[hidden]{display:none!important}
 #shotView img{max-width:100%;max-height:72vh;border-radius:10px;border:2px solid #fff}
 </style>
 </head>
@@ -151,12 +194,11 @@ body:not(.commander) .cmdui{display:none}
     <div id="status"></div>
   </div>
   <div class="chip" style="text-align:right">
-    <div class="sub">State hash</div>
-    <div><b id="hash">--------</b></div>
-    <button class="btn" id="reset" style="margin-top:6px;padding:4px 10px;font-size:13px;box-shadow:0 3px 0 var(--ink)">Reset</button>
+    <div id="hashBox" hidden><div class="sub">State hash</div><div><b id="hash">--------</b></div></div>
+    <button class="btn" id="menuBtn" style="padding:4px 10px;font-size:13px;box-shadow:0 3px 0 var(--ink);display:block;margin-left:auto" hidden>☰ Menu</button>
+    <button class="btn" id="reset" style="margin-top:6px;padding:4px 10px;font-size:13px;box-shadow:0 3px 0 var(--ink);display:block;margin-left:auto">Reset</button>
     <button class="btn" data-act="view" aria-pressed="false" style="margin-top:6px;padding:4px 10px;font-size:13px;box-shadow:0 3px 0 var(--ink);display:block;margin-left:auto">1st person</button>
     <button class="btn" data-act="commander" style="margin-top:6px;padding:4px 10px;font-size:13px;box-shadow:0 3px 0 var(--ink);display:block;margin-left:auto">Commander</button>
-    <button class="btn" id="onlineBtn" style="margin-top:6px;padding:4px 10px;font-size:13px;box-shadow:0 3px 0 var(--ink);display:block;margin-left:auto" hidden>Play online</button>
   </div>
 </div>
 
@@ -179,8 +221,35 @@ body:not(.commander) .cmdui{display:none}
   <button class="btn" id="shotClose" style="padding:8px 18px;color:var(--ink)">Close</button>
 </div>
 
+<div id="lobby" hidden>
+  <div class="lcard">
+    <div class="ltitle"><h1 id="gameName">Cube Wars</h1><div class="tag">Turn-based battles on ground you can dig.</div></div>
+    <div class="lpanel">
+      <label class="lnamerow">You are <input id="lName" maxlength="20" autocomplete="nickname" spellcheck="false" aria-label="Your name"> ✎</label>
+      <button class="btn lbig" id="lQuick">Quick play</button>
+      <div id="lSearch" hidden>
+        <div><span class="spin" aria-hidden="true"></span>Looking for an opponent…</div>
+        <div class="sub">It's turn-based: you can close the app. We'll tell you when the game starts.</div>
+        <button class="btn" id="lCancel" style="padding:6px 14px;font-size:14px;box-shadow:0 3px 0 var(--ink)">Stop looking</button>
+      </div>
+      <div class="lrow">
+        <button class="btn" id="lFriend">Play a friend</button>
+        <button class="btn" id="lLocal">Pass &amp; play</button>
+      </div>
+    </div>
+    <div class="lh">Your games</div>
+    <div id="lGames"><div class="lempty">No games yet.</div></div>
+    <div class="lfoot">
+      <button class="btn" id="lNotify" hidden>🔔 Tell me when it's my turn</button>
+      <div id="lPushNote" hidden></div>
+      <div id="gsi"></div>
+      <div id="lGoogle" hidden></div>
+    </div>
+  </div>
+</div>
+
 <div id="shareView" hidden>
-  <div>Send this link to your opponent.<br>They play Red; you play Blue and can start now.</div>
+  <div>Send this link to a friend.<br>They play Red. You play Blue and can make your first move now.</div>
   <input id="shareLink" readonly aria-label="Match link">
   <div style="display:flex;gap:10px">
     <button class="btn" id="shareGo" style="padding:10px 18px;background:var(--cmd);color:#22303b">Share link</button>
@@ -1247,37 +1316,179 @@ function turnStarted(quiet) {
 
 /* ---------- Online: a match on the server. Your actions stay local (undo works) until End turn sends them;
    the server replays them with the same sim-core.js and passes them on. The opponent's turns arrive the same way. ---------- */
-const NET = { id: null, team: -1, token: null, count: 0, rev: -1, players: [true, false], sending: false, done: false };
+const GAME_NAME = 'Cube Wars';
+const NET = { id: null, team: -1, legacy: null, count: 0, rev: -1, players: [true, false], names: [null, null], sending: false, done: false };
 const myTurn = () => !NET.id || (S.team === NET.team && !NET.sending && !NET.done);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-function stored(key, value) {                  // the seat token lives in this browser only (accounts come later)
+const onWeb = location.protocol.startsWith('http');                    // opened as a file: hot-seat only
+function stored(key, value) {
   try {
     if (value === undefined) return JSON.parse(localStorage.getItem(key));
     localStorage.setItem(key, JSON.stringify(value));
   } catch { return null; }
 }
+// You: a guest player made on first visit. The secret token stays in this browser (and in a cache the
+// service worker can read, so a notification can say whose turn it is).
+let me = { token: stored('bw:player') && stored('bw:player').token };
 async function api(method, path, body) {
-  const r = await fetch('/api/matches' + path, { method, headers: body ? { 'content-type': 'application/json' } : {}, body: body && JSON.stringify(body) });
+  const headers = {};
+  if (body) headers['content-type'] = 'application/json';
+  if (me.token) headers.authorization = 'Bearer ' + me.token;
+  const r = await fetch('/api' + path, { method, headers, body: body && JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw Object.assign(new Error(j.error || 'server error ' + r.status), { status: r.status });
   return j;
 }
+async function signIn() {
+  if (me.token) {
+    try { Object.assign(me, await api('GET', '/me')); return me; }
+    catch (e) { if (e.status !== 401) throw e; }                       // unknown token: start a new guest
+  }
+  const p = await api('POST', '/players');
+  me = { token: p.token };
+  stored('bw:player', { token: p.token });
+  Object.assign(me, await api('GET', '/me'));
+  return me;
+}
+function shareTokenWithWorker() {
+  if (!('caches' in window) || !me.token) return;
+  caches.open('bw').then(c => c.put('/__token', new Response(me.token))).catch(() => {});
+}
+
+/* ---------- Notifications: a service worker shows "Your turn" even when the app is closed ---------- */
+let config = null;
+const pushable = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+async function enablePush(ask) {
+  if (!pushable() || !config || !config.vapidKey) return false;
+  if (Notification.permission === 'denied') return false;
+  if (Notification.permission === 'default' && (!ask || await Notification.requestPermission() !== 'granted')) return false;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const key = Uint8Array.from(atob(config.vapidKey.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+    const sub = await reg.pushManager.getSubscription() || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+    await api('POST', '/me/push', { subscription: sub.toJSON() });
+    return true;
+  } catch { return false; }
+}
+function updatePushUi() {
+  const b = $('lNotify'), note = $('lPushNote');
+  const state = !pushable() ? 'none' : Notification.permission;
+  b.hidden = state !== 'default';
+  note.hidden = state !== 'denied';
+  note.textContent = 'Notifications are blocked for this site. Allow them in the browser settings to hear about your turns.';
+}
+
+/* ---------- Lobby ---------- */
+let lobbyOpen = false, searching = false;
+function openLobby() {
+  lobbyOpen = true;
+  document.body.classList.add('lobby');
+  $('lobby').hidden = false;
+  refreshLobby();
+}
+function closeLobby() {
+  lobbyOpen = false;
+  document.body.classList.remove('lobby');
+  $('lobby').hidden = true;
+}
+function gameRow(g) {
+  const b = document.createElement('button');
+  b.className = 'btn game' + (g.winner >= 0 ? ' over' : '');
+  const who = g.opponent ? 'vs ' + g.opponent : g.kind === 'invite' ? 'Waiting for your friend' : 'vs ?';
+  const status = g.winner >= 0 ? (g.winner === g.team ? 'You won' : 'You lost')
+    : g.myTurn ? 'Your turn' : g.joined ? 'Their turn' : 'Not joined';
+  b.innerHTML = '<span class="dot"></span><span class="who"></span><span class="st"></span>';
+  b.querySelector('.dot').style.background = hex(TEAM_COLORS[g.team]);
+  b.querySelector('.who').textContent = who;
+  const st = b.querySelector('.st');
+  st.textContent = status;
+  st.classList.toggle('turn', g.winner < 0 && g.myTurn);
+  b.addEventListener('click', () => { location.href = '/?m=' + g.id; });
+  return b;
+}
+async function refreshLobby() {
+  if (!lobbyOpen || !me.id) return;
+  try { Object.assign(me, await api('GET', '/me')); } catch { return; }
+  if (document.activeElement !== $('lName')) $('lName').value = me.name;
+  const list = $('lGames');
+  list.innerHTML = '';
+  const live = me.games.filter(g => g.winner < 0), over = me.games.filter(g => g.winner >= 0).slice(0, 5);
+  for (const g of [...live, ...over]) list.appendChild(gameRow(g));
+  if (!me.games.length) list.innerHTML = '<div class="lempty">No games yet. Tap Quick play to find an opponent.</div>';
+  setSearching(me.searching);
+  updatePushUi();
+  $('lGoogle').hidden = !me.google;
+  $('lGoogle').textContent = me.google ? '✓ Signed in with Google: your games follow you to any device.' : '';
+  $('gsi').hidden = !!me.google;
+  if (config && config.googleClientId && !me.google) loadGoogle();
+}
+function setSearching(on) {
+  const was = searching;
+  searching = on;
+  $('lSearch').hidden = !on;
+  $('lQuick').hidden = on;
+  if (on && !was) waitForOpponent();
+}
+async function waitForOpponent() {
+  while (searching && lobbyOpen) {
+    try {
+      const r = await api('GET', '/quick');
+      if (r.match) { location.href = '/?m=' + r.match; return; }
+      if (!r.waiting) { setSearching(false); return; }
+    } catch { await sleep(3000); }
+  }
+}
+async function quickPlay() {
+  enablePush(true);                            // a good moment to ask: "we'll tell you when it starts"
+  try {
+    const r = await api('POST', '/quick');
+    if (r.match) { location.href = '/?m=' + r.match; return; }
+    setSearching(true);
+  } catch (e) { flash(e.message); }
+}
+async function playFriend() {
+  try {
+    const m = await api('POST', '/matches');
+    location.href = '/?m=' + m.id;
+  } catch (e) { flash("Couldn't start a match: " + e.message); }
+}
+async function rename() {
+  const name = $('lName').value.trim();
+  if (!name || name === me.name) { $('lName').value = me.name; return; }
+  try { me.name = (await api('POST', '/me', { name })).name; } catch (e) { flash(e.message); }
+  $('lName').value = me.name;
+}
+let googleLoading = false;
+function loadGoogle() {
+  if (googleLoading) return;
+  googleLoading = true;
+  const sc = document.createElement('script');
+  sc.src = 'https://accounts.google.com/gsi/client';
+  sc.async = true;
+  sc.onload = () => {
+    google.accounts.id.initialize({ client_id: config.googleClientId, callback: async r => {
+      try {
+        const res = await api('POST', '/me/google', { credential: r.credential });
+        flash(res.switched ? 'Welcome back, ' + res.name : 'Google account connected');
+        refreshLobby();
+      } catch (e) { flash(e.message); }
+    } });
+    google.accounts.id.renderButton($('gsi'), { theme: 'outline', size: 'large', shape: 'pill', text: 'continue_with' });
+  };
+  document.head.appendChild(sc);
+}
+
+/* ---------- In a match ---------- */
 function netLine() {
   if (!NET.id) return;
-  const you = NET.team >= 0 ? 'You are ' + TEAM_NAMES[NET.team] + ' · ' : 'Watching · ';
+  const opp = NET.team >= 0 ? NET.names[1 - NET.team] : null;
+  const you = NET.team >= 0 ? 'You are ' + TEAM_NAMES[NET.team] + (opp ? ' vs ' + opp : '') + ' · ' : 'Watching · ';
   const waitingForJoin = NET.team === 0 && !NET.players[1];
   $('netLine').textContent = S.winner >= 0 ? you + TEAM_NAMES[S.winner] + ' won'
     : NET.sending ? you + 'Sending…'
     : myTurn() ? you + 'Your turn' + (waitingForJoin ? ' · no opponent yet' : '')
-    : you + 'Waiting for ' + TEAM_NAMES[S.team] + '…';
+    : you + 'Waiting for ' + (NET.team >= 0 && opp ? opp : TEAM_NAMES[S.team]) + '…';
   $('shareBtn').hidden = !waitingForJoin;
-}
-async function createMatch() {
-  try {
-    const m = await api('POST', '');
-    stored('bw:' + m.id, { team: m.team, token: m.token });
-    location.href = '/?m=' + m.id;
-  } catch (e) { flash("Couldn't start a match: " + e.message); }
 }
 function showShare() {
   $('shareLink').value = location.origin + '/?m=' + NET.id;
@@ -1286,13 +1497,13 @@ function showShare() {
 async function shareLink() {
   const url = $('shareLink').value;
   try {
-    if (navigator.share) await navigator.share({ title: 'Block Wars', text: 'Play Block Wars with me', url });
+    if (navigator.share) await navigator.share({ title: GAME_NAME, text: 'Play ' + GAME_NAME + ' with me', url });
     else { await navigator.clipboard.writeText(url); flash('Link copied'); }
   } catch { $('shareLink').select(); }
 }
 // Apply turns from the server that we don't have yet. Each one is replayed and hash-checked like on the server.
 function applyMatch(m, initial) {
-  NET.rev = m.rev; NET.players = m.players;
+  NET.rev = m.rev; NET.players = m.players; NET.names = m.names || NET.names;
   let got = 0;
   for (const t of m.turns) {
     if (t.n !== NET.count) continue;
@@ -1306,13 +1517,14 @@ function applyMatch(m, initial) {
     syncUnitGroups();
     if (initial) { S.events.length = 0; rebuildAll(); } else { playEvents(); rebuildChanged(); }
     turnStarted(initial);
+    if (!initial && S.team === NET.team && navigator.vibrate) navigator.vibrate([30, 60, 30]);
   }
   refreshHud();
 }
 async function poll() {
   for (;;) {
     try {
-      const m = await api('GET', `/${NET.id}?since=${NET.count}&rev=${NET.rev}`);
+      const m = await api('GET', `/matches/${NET.id}?since=${NET.count}&rev=${NET.rev}`);
       while (falling || NET.sending) await sleep(150);   // never replay into the middle of a local animation or send
       applyMatch(m, false);
     } catch { await sleep(3000); }
@@ -1324,7 +1536,7 @@ async function submitTurn() {
   NET.sending = true;
   setMode(null); showRange(); refreshHud();
   for (let tries = 0; ; tries++) {
-    try { await api('POST', `/${NET.id}/turns`, { token: NET.token, ...turn }); break; }
+    try { await api('POST', `/matches/${NET.id}/turns`, { token: NET.legacy || undefined, ...turn }); break; }
     catch (e) {
       if (e.status && e.status < 500 && e.status !== 429) {   // refused: our copy is wrong, start over from the server's
         NET.done = true; NET.sending = false;
@@ -1343,24 +1555,20 @@ async function submitTurn() {
   if (S.wnext.length) settle();
   refreshHud();
 }
-async function startOnline() {
-  if (!location.protocol.startsWith('http')) return;    // opened as a file: hot-seat only
-  const id = new URLSearchParams(location.search).get('m');
-  $('onlineBtn').hidden = !!id;
-  if (!id) return;
+async function openMatch(id) {
   NET.id = id;
   $('reset').hidden = true;
   $('netRow').hidden = false;
-  let seat = stored('bw:' + id);
+  const legacy = stored('bw:' + id);             // matches from before accounts: a seat token per match
   try {
-    const path = '/' + encodeURIComponent(id);
+    const path = '/matches/' + encodeURIComponent(id);
     let m = await api('GET', path + '?since=0');
-    if (!seat && !m.players[1]) {
-      try { const j = await api('POST', path + '/join'); seat = { team: j.team, token: j.token }; stored('bw:' + id, seat); }
-      catch { /* someone else took the seat: watch instead */ }
+    if (legacy && legacy.token) { NET.team = legacy.team; NET.legacy = legacy.token; }
+    else if (m.you < 0 && !m.players[1]) {
+      try { await api('POST', path + '/join'); } catch { /* someone else took the seat: watch instead */ }
       m = await api('GET', path + '?since=0');
     }
-    if (seat) { NET.team = seat.team; NET.token = seat.token; }
+    if (!NET.legacy) NET.team = m.you;
     applyMatch(m, true);
     if (NET.team === 0 && !m.players[1] && !m.count) showShare();
     poll();
@@ -1370,6 +1578,31 @@ async function startOnline() {
     refreshHud();
   }
 }
+async function startOnline() {
+  if (!onWeb) { $('hashBox').hidden = false; return; }
+  $('menuBtn').hidden = false;
+  if (new URLSearchParams(location.search).has('debug')) $('hashBox').hidden = false;
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  const id = new URLSearchParams(location.search).get('m');
+  if (!id) openLobby();
+  try {
+    config = await api('GET', '/config');
+    await signIn();
+    shareTokenWithWorker();
+    if (pushable() && Notification.permission === 'granted') enablePush(false);   // keep the subscription fresh
+  } catch (e) { flash("Can't reach the server: " + e.message); return; }
+  if (id) openMatch(id); else refreshLobby();
+}
+$('lQuick').addEventListener('click', quickPlay);
+$('lCancel').addEventListener('click', async () => { setSearching(false); try { await api('DELETE', '/quick'); } catch { /* it expires anyway */ } });
+$('lFriend').addEventListener('click', playFriend);
+$('lLocal').addEventListener('click', closeLobby);
+$('lNotify').addEventListener('click', async () => { if (!await enablePush(true)) flash('Notifications are not available here'); updatePushUi(); });
+$('lName').addEventListener('change', rename);
+$('lName').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
+$('menuBtn').addEventListener('click', () => { if (NET.id) location.href = '/'; else openLobby(); });
+setInterval(() => { if (lobbyOpen && !document.hidden) refreshLobby(); }, 20000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshLobby(); });
 
 function press(el) { el.classList.add('pressed'); }
 function release(el) { el.classList.remove('pressed'); }
@@ -1386,7 +1619,6 @@ $('winAgain').addEventListener('click', () => {
   else if (!NET.done && S.winner === NET.team) act('endturn');
   else location.href = '/';
 });
-$('onlineBtn').addEventListener('click', createMatch);
 $('shareBtn').addEventListener('click', showShare);
 $('shareGo').addEventListener('click', shareLink);
 $('shareClose').addEventListener('click', () => { $('shareView').hidden = true; });
@@ -1609,6 +1841,7 @@ resize();
 let t0 = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - t0) / 1000); t0 = now;
+  if (lobbyOpen && !reduceMotion) yaw += dt * 0.08;   // the lobby's backdrop: a slow turn around the battlefield
   stepWalker(dt);
   updateCut();
   if (flashTimer && now > flashTimer) { flashTimer = 0; $('status').textContent = falling ? 'Collapsing…' : ''; }
@@ -1661,6 +1894,7 @@ function frame(now) {
     g.userData.sprite.visible = !(fps && !commander && k === sel) && !hiddenCell(cx, cy, cz);
   });
   selRing.visible = !fps && !commander;
+  if (lobbyOpen) rangeTiles.visible = destTile.visible = selRing.visible = false;   // a clean backdrop behind the lobby
   const targets = attackMode ? attackTargets() : [];
   unitGroups.forEach((g, k) => {
     if (k >= S.units.length) return;

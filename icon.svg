@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Cube Wars icon: one grass block with a Blue flag. Source for the PNG icons (tools/make-icons.js). -->
+  <rect width="512" height="512" fill="#bcd6e8"/>
+  <g stroke="#22303b" stroke-width="12" stroke-linejoin="round">
+    <polygon points="256,128 432,216 256,304 80,216" fill="#6aa84f"/>
+    <polygon points="80,216 256,304 256,456 80,368" fill="#8b5a34"/>
+    <polygon points="432,216 256,304 256,456 432,368" fill="#6e4528"/>
+    <polygon points="80,216 256,304 256,336 80,248" fill="#5b9a40"/>
+    <polygon points="432,216 256,304 256,336 432,248" fill="#4e8a37"/>
+  </g>
+  <line x1="268" y1="226" x2="268" y2="56" stroke="#22303b" stroke-width="12" stroke-linecap="round"/>
+  <polygon points="274,62 380,92 274,124" fill="#3b82c4" stroke="#22303b" stroke-width="10" stroke-linejoin="round"/>
+</svg>

@@ -9,6 +9,9 @@ command -v sqlite3 >/dev/null || apt-get install -y -qq sqlite3 >/dev/null
 install -d /var/www/block_wars /srv/block_wars/server
 install -m 644 sim.html /var/www/block_wars/index.html
 install -m 644 sim-core.js /var/www/block_wars/sim-core.js
+for f in sw.js manifest.webmanifest icon-192.png icon-512.png icon-maskable-512.png; do install -m 644 "$f" "/var/www/block_wars/$f"; done
+# Settings that aren't in git (e.g. GOOGLE_CLIENT_ID=...): one KEY=value per line.
+[ -f /etc/block-wars.env ] || printf '# Block Wars server settings, e.g.\n# GOOGLE_CLIENT_ID=1234-abc.apps.googleusercontent.com\n' > /etc/block-wars.env
 install -m 644 sim-core.js /srv/block_wars/sim-core.js
 install -m 644 server/server.js /srv/block_wars/server/server.js
 

@@ -10,6 +10,8 @@ cubewars.io {
 	handle {
 		root * /var/www/block_wars
 		header Cache-Control "no-cache"
+		@manifest path *.webmanifest
+		header @manifest Content-Type application/manifest+json
 		file_server
 	}
 }
