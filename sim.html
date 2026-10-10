@@ -370,7 +370,7 @@ const {
   W, D, H, WD, AIR, DIRT, STONE, WOOD, BEDROCK, LEAVES, WFULL, MAX_HP, CAPTURE_PTS, INCOME,
   TEAM_NAMES, TEAM_COLORS, TYPES, UNIT_TYPES,
   idx, inGrid, mix, unitName, cellKey, newState, stateHash,
-  stepTo, moveOf, moveRange, moveUnit, canDig, dig, canAttack, attack,
+  stepTo, stepsFrom, moveOf, moveRange, moveUnit, canDig, digTool, dig, canAttack, attack, hasLadder, climbsLadders,
   canCapture, capture, canBuild, buildUnit, incomeOf,
   beginAction, endAction, undo, redo, endTurn, gravityStep, waterStep, turnGroups, replayTurn,
 } = BlockSim;
@@ -378,7 +378,7 @@ const {
 /* =========================================================
    VIEW — Three.js. Reads the sim; walking is a visual that commits snapped cells.
    ========================================================= */
-const MAT_COLOR = { 1: 0x6aa84f, 2: 0x8b5a34, 3: 0x8e9198, 4: 0xb4864f, 5: 0x3a3a42, 6: 0x3f8f3b };
+const MAT_COLOR = { 1: 0x6aa84f, 2: 0x8b5a34, 3: 0x8e9198, 4: 0xb4864f, 5: 0x3a3a42, 6: 0x3f8f3b, 7: 0xf2c230 };
 const PLACEABLE = [{ m: STONE, name: 'Stone' }, { m: DIRT, name: 'Dirt' }, { m: WOOD, name: 'Wood' }, { m: LEAVES, name: 'Leaves' }];
 
 let S = newState();
@@ -766,6 +766,42 @@ function atkRing(k) {
   }
   return atkRings[k];
 }
+// Ladders: wooden rungs on every wall of a builder's hole. Rebuilt only when the ladders or the layer view change.
+const ladderTex = (() => {
+  const c = document.createElement('canvas'); c.width = 16; c.height = 16;
+  const x = c.getContext('2d');
+  x.fillStyle = '#7a4f2a'; x.fillRect(2, 0, 2, 16); x.fillRect(12, 0, 2, 16);
+  x.fillStyle = '#a8763f'; for (const y of [1, 5, 9, 13]) x.fillRect(2, y, 12, 2);
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
+  return t;
+})();
+const ladderMat = new THREE.MeshLambertMaterial({ map: ladderTex, alphaTest: 0.5, side: THREE.DoubleSide });
+let ladderMesh = null, ladderKey = '';
+function syncLadders() {
+  const key = (S.lad ? S.lh + ':' + S.lad.size : 'none') + ':' + (cut ? cut.x + ',' + cut.y + ',' + cut.z : '');
+  if (key === ladderKey) return;
+  ladderKey = key;
+  const faces = [];
+  if (S.lad) for (const i of S.lad) {
+    const x = i % W, z = ((i / W) | 0) % D, y = (i / WD) | 0;
+    if (hiddenCell(x, y, z)) continue;
+    for (const [dx, dz, rot] of [[1, 0, -Math.PI / 2], [-1, 0, Math.PI / 2], [0, 1, Math.PI], [0, -1, 0]])
+      if (inGrid(x + dx, y, z + dz) && S.g[idx(x + dx, y, z + dz)]) faces.push([x + 0.5 + dx * 0.47, y + 0.5, z + 0.5 + dz * 0.47, rot]);
+  }
+  if (!ladderMesh || ladderMesh.userData.cap < faces.length) {
+    if (ladderMesh) scene.remove(ladderMesh);
+    const cap = Math.max(64, faces.length * 2);
+    ladderMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.86, 1), ladderMat, cap);
+    ladderMesh.userData.cap = cap;
+    scene.add(ladderMesh);
+  }
+  const m = new THREE.Matrix4(), r = new THREE.Matrix4();
+  faces.forEach(([x, y, z, rot], k) => { m.makeTranslation(x, y, z).multiply(r.makeRotationY(rot)); ladderMesh.setMatrixAt(k, m); });
+  ladderMesh.count = faces.length;
+  ladderMesh.instanceMatrix.needsUpdate = true;
+}
+
 const selRing = new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.05, 6, 28), new THREE.MeshBasicMaterial({ color: 0xff7a1a }));
 selRing.rotation.x = Math.PI / 2;
 scene.add(selRing);
@@ -801,6 +837,7 @@ function syncBuildings() {
     v.userData.flag.position.set(0.32 + (v.userData.base ? 0.39 : 0.28), fh / 2 + (v.userData.poleH - fh) * f, 0.32);
     v.visible = !hiddenCell(b.x, b.y, b.z);
   });
+  for (let k = S.buildings.length; k < buildingViews.length; k++) buildingViews[k].visible = false;   // maps differ in buildings
 }
 
 // Move range: a "bucket fill" of flat tiles on every reachable cell, plus a marker for where you'll end up.
@@ -968,10 +1005,8 @@ function pathWithin(from, to) {
   for (let h = 0; h < q.length; h++) {
     const c = q[h];
     if (cellKey(...c) === tk) break;
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const ny = stepTo(S, u, c[0], c[1], c[2], dx, dz);
-      if (ny < 0) continue;
-      const n = [c[0] + dx, ny, c[2] + dz], k = cellKey(...n);
+    for (const n of stepsFrom(S, u, ...c)) {
+      const k = cellKey(...n);
       if (!range.has(k) || prev.has(k)) continue;
       prev.set(k, c); q.push(n);
     }
@@ -1017,6 +1052,32 @@ function joyStep(dt) {
   }
   const push = Math.min(1, Math.hypot(joy.x, joy.y));
   const fx = -Math.sin(yaw), fz = -Math.cos(yaw);    // "up" on the stick = away from the camera
+  const u = selUnit(), [cx, cy, cz] = pending;
+  if (climbsLadders(u) && hasLadder(S, cx, cy, cz) && Math.abs(joy.y) > Math.abs(joy.x)) {
+    // On a ladder the stick's up/down climbs. At the top, up steps out onto the ground on the side you face.
+    let target = null;
+    if (joy.y > 0) {
+      if (hasLadder(S, cx, cy + 1, cz) && range.has(cellKey(cx, cy + 1, cz))) target = [cx, cy + 1, cz];
+      else {
+        let best = -Infinity;
+        for (const c of stepsFrom(S, u, cx, cy, cz)) {
+          if (c[1] !== cy + 1 || (c[0] === cx && c[2] === cz) || !range.has(cellKey(...c))) continue;
+          const d = (c[0] - cx) * fx + (c[2] - cz) * fz;
+          if (d > best) { best = d; target = c; }
+        }
+      }
+    } else {
+      const down = stepsFrom(S, u, cx, cy, cz).find(c => c[0] === cx && c[2] === cz && c[1] < cy);
+      if (down && range.has(cellKey(...down))) target = down;
+    }
+    if (target) {
+      const tx = target[0] + 0.5, ty = target[1], tz = target[2] + 0.5;
+      const dx = tx - p.x, dy = ty - p.y, dz = tz - p.z, dist = Math.hypot(dx, dy, dz), step = SPEED * 0.7 * push * dt;
+      if (dist <= step) { p.set(tx, ty, tz); pending = target.slice(); }
+      else { p.x += dx / dist * step; p.y += dy / dist * step; p.z += dz / dist * step; }
+    }
+    return;
+  }
   const vx = -fz * joy.x + fx * joy.y, vz = fx * joy.x + fz * joy.y, len = Math.hypot(vx, vz) || 1;
   const step = SPEED * push * dt;
   joyTry(p.x + vx / len * step, p.z);
@@ -1147,7 +1208,11 @@ function tryDig(cx, cy) {
     refreshHud();
     return;
   }
+  const before = S.gold[S.team];
+  const stay = !u.moved && pending[0] === u.x && pending[1] === u.y && pending[2] === u.z;
   dig(S, u, ...c);
+  if (stay) pending = [u.x, u.y, u.z];          // digging under your feet takes you down: the plan follows
+  if (S.gold[S.team] > before) flash('+' + (S.gold[S.team] - before) + ' gold');
   rebuildChanged();
   settle();
 }
@@ -1307,13 +1372,20 @@ function refreshHud() {
   document.querySelector('[data-act="redo"]').disabled = falling || S.cursor >= S.history.length || !mine;
   document.querySelector('[data-act="attack"]').disabled = u.acted || falling || S.winner >= 0 || !mine;
   document.querySelector('[data-act="capture"]').disabled = falling || !captureTarget() || !mine;
+  document.querySelector('[data-act="dig"]').disabled = falling || !mine || digTool(S, u) === 'none';
+  syncLadders();
   $('gold').textContent = S.gold[S.team];
   $('income').textContent = '(+' + incomeOf(S, S.team) + '/turn)';
   $('buildBtn').disabled = falling || !mine || !TYPES.some(t => canBuild(S, t));
   if (!$('buildPanel').hidden) renderBuildPanel();
   const won = winnerNow();
-  $('winView').hidden = won < 0;
-  if (won >= 0) {
+  $('winView').hidden = won < 0 && NET.desync < 0;
+  if (NET.desync >= 0) {                         // a turn played differently on the two devices: no fair way to continue
+    $('winText').textContent = 'Out of sync';
+    $('winSub').textContent = 'Turn ' + (NET.desync + 1) + " didn't play out the same on both devices, so this game can't continue.";
+    $('winUndo').hidden = true; $('winAgain').textContent = 'Main menu';
+  }
+  if (won >= 0 && NET.desync < 0) {
     $('winText').textContent = NET.id && NET.team >= 0 ? (won === NET.team ? 'You win!' : 'You lose') : TEAM_NAMES[won] + ' wins!';
     $('winSub').textContent = NET.quit < 0 ? 'The enemy base has been captured.'
       : NET.quit === NET.team ? 'You quit the game.' : (NET.names[NET.quit] || TEAM_NAMES[NET.quit]) + ' quit the game.';
@@ -1473,7 +1545,8 @@ function turnStarted(quiet) {
    the server replays them with the same sim-core.js and passes them on. The opponent's turns arrive the same way. ---------- */
 const GAME_NAME = 'Cube Wars';
 const NET = { id: null, team: -1, legacy: null, count: 0, rev: -1, players: [true, false], names: [null, null], sending: false, done: false,
-              winner: -1, quit: -1 };                // winner/quit from the server: a match can also end by someone quitting
+              winner: -1, quit: -1, desync: -1 };    // winner/quit from the server: a match can also end by someone quitting;
+                                                     // desync: the first turn that didn't replay the same here or there
 const winnerNow = () => S.winner >= 0 ? S.winner : NET.winner;
 const myTurn = () => !NET.id || (S.team === NET.team && !NET.sending && !NET.done);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -1665,11 +1738,17 @@ async function shareLink() {
 function applyMatch(m, initial) {
   NET.rev = m.rev; NET.players = m.players; NET.names = m.names || NET.names;
   if (m.quit >= 0) { NET.quit = m.quit; NET.winner = m.winner; NET.done = true; }
+  if (m.desync >= 0 && NET.desync < 0) { NET.desync = m.desync; NET.done = true; }
   let got = 0;
   for (const t of m.turns) {
     if (t.n !== NET.count) continue;
     const err = replayTurn(S, t);
-    if (err) { NET.done = true; flash('Out of sync with the server, reloading…'); setTimeout(() => location.reload(), 1500); return; }
+    if (err) {                                   // their turn doesn't reproduce here: stop the game and tell the server
+      NET.done = true; NET.desync = t.n;
+      api('POST', `/matches/${NET.id}/desync`, { n: t.n, reason: err }).catch(() => {});
+      refreshHud();
+      return;
+    }
     NET.count++; got++;
   }
   if (S.winner >= 0) NET.done = true;
@@ -1697,7 +1776,7 @@ async function submitTurn() {
   NET.sending = true;
   setMode(null); showRange(); refreshHud();
   for (let tries = 0; ; tries++) {
-    try { await api('POST', `/matches/${NET.id}/turns`, { token: NET.legacy || undefined, ...turn }); break; }
+    try { await api('POST', `/matches/${NET.id}/turns`, { token: NET.legacy || undefined, winner: S.winner, ...turn }); break; }
     catch (e) {
       if (e.status && e.status < 500 && e.status !== 429) {   // refused: our copy is wrong, start over from the server's
         NET.done = true; NET.sending = false;
@@ -1740,7 +1819,7 @@ async function openMatch(id) {
       m = await api('GET', path + '?since=0');
     }
     if (!NET.legacy) NET.team = m.you;
-    S.rules = m.rules || 1;                      // the rules this match started with (the map is the same for all)
+    if (S.rules !== (m.rules || 1) || S.seed !== (m.seed || 1)) newGame(m.rules || 1, m.seed || 1);   // this match's rules and map
     applyMatch(m, true);
     turnStarted(true);                           // look at your own army, even before any turn was played
     if (NET.team === 0 && !m.players[1] && !m.count) showShare();
@@ -1770,7 +1849,7 @@ async function startOnline() {
 $('lQuick').addEventListener('click', quickPlay);
 $('lCancel').addEventListener('click', async () => { setSearching(false); try { await api('DELETE', '/quick'); } catch { /* it expires anyway */ } });
 $('lFriend').addEventListener('click', playFriend);
-$('lLocal').addEventListener('click', closeLobby);
+$('lLocal').addEventListener('click', () => { newGame(undefined, randomSeed()); closeLobby(); });
 $('lNotify').addEventListener('click', async () => { if (!await enablePush(true)) flash('Notifications are not available here'); updatePushUi(); });
 $('lName').addEventListener('change', rename);
 $('lName').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
@@ -1853,10 +1932,10 @@ $('winAgain').addEventListener('click', () => {
 $('shareBtn').addEventListener('click', showShare);
 $('shareGo').addEventListener('click', shareLink);
 $('shareClose').addEventListener('click', () => { $('shareView').hidden = true; });
-$('reset').addEventListener('pointerdown', e => {
-  e.preventDefault();
-  if (falling) return;
-  S = newState();
+// A fresh world: the latest rules with a random gold layout for pass & play, or a match's own rules and seed.
+const randomSeed = () => 1 + Math.floor(Math.random() * 2147483000);
+function newGame(rules, seed) {
+  S = newState(rules, seed);
   sel = 0;
   setMode(null);
   hiddenLoot.clear();
@@ -1865,6 +1944,11 @@ $('reset').addEventListener('pointerdown', e => {
   S.units.forEach((u, k) => { unitGroups[k].userData.vis.set(u.x + 0.5, u.y, u.z + 0.5); });
   resetWalker();
   rebuildAll(); showRange(); refreshHud();
+}
+$('reset').addEventListener('pointerdown', e => {
+  e.preventDefault();
+  if (falling) return;
+  newGame(undefined, randomSeed());
 });
 
 window.addEventListener('keyup', e => { cmdKeys[e.key.toLowerCase()] = false; });
@@ -2149,6 +2233,17 @@ showRange();
 refreshHud();
 requestAnimationFrame(frame);
 startOnline();
+// Debug only (file:// or ?debug): lets a test read the state and dig below the selected unit like a tap would.
+if (DEBUG) window.BW_DEBUG = {
+  state: () => S, sel: () => selUnit(), pending: () => pending, walkerY: () => walker.p.y,
+  digBelow() {                                   // the same steps as tapping the block under the unit in dig mode
+    const u = selUnit(), stay = pending[0] === u.x && pending[1] === u.y && pending[2] === u.z;
+    setMode('dig'); beginAction(S);
+    const ok = dig(S, u, u.x, u.y - 1, u.z);
+    if (stay) pending = [u.x, u.y, u.z];
+    rebuildChanged(); settle(); return ok;
+  },
+};
 })();
 </script>
 </body>

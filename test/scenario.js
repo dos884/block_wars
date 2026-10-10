@@ -7,7 +7,8 @@
 function runScenario(B, rounds = 6, rules) {
   const S = B.newState(rules);              // rules version: undefined = the latest
   const log = [['start', B.stateHash(S)]];
-  const turns = [];                              // what a client would send each End turn (if the core can record it)
+  const turns = [];
+  const goldAt = new Map();                      // builder id → the gold column it's heading for                              // what a client would send each End turn (if the core can record it)
   const note = label => log.push([label, B.stateHash(S)]);
   const cx = B.W >> 1, cz = B.D >> 1;
   const dist = (u, x, z) => Math.abs(u.x - x) + Math.abs(u.z - z);
@@ -51,10 +52,36 @@ function runScenario(B, rounds = 6, rules) {
   };
 
   for (let turn = 0; turn < rounds * 2; turn++) {
-    if (B.canBuild(S, 'soldier')) action(`build ${S.team}`, () => !!B.buildUnit(S, S.team ? 'spearman' : 'soldier'));
+    // Rules 3 (only builders dig, ladders): each side's first new unit is a builder.
+    const firstBuild = S.lad && !S.units.some(v => v.team === S.team && v.type === 'builder');
+    const want = firstBuild ? 'builder' : S.team ? 'spearman' : 'soldier';
+    if (B.canBuild(S, want)) action(`build ${S.team}`, () => !!B.buildUnit(S, want));
     for (let k = 0; k < S.units.length; k++) {
       const u = S.units[k];                     // look it up fresh: undo/redo replaces the unit objects
       if (u.dead || u.team !== S.team || u.moved) continue;
+      if (u.type === 'builder' && S.lad) {
+        // Head for this side's nearest gold column (climbing out of shafts on their ladders); once standing on it,
+        // dig straight down 3 a turn: ladders appear, and the gold 3-7 under the ground gets mined.
+        if (!goldAt.has(u.id)) {
+          let best = Infinity, at = [cx, cz];
+          for (let i = 0; i < S.g.length; i++) {
+            if (S.g[i] !== B.GOLD) continue;
+            const x = i % B.W, z = ((i / B.W) | 0) % B.D;
+            if ((x < cx) !== (u.team === 0)) continue;
+            const d = Math.abs(x - u.x) + Math.abs(z - u.z);
+            if (d < best) { best = d; at = [x, z]; }
+          }
+          goldAt.set(u.id, at);
+        }
+        const [gx, gz] = goldAt.get(u.id);
+        if (u.x !== gx || u.z !== gz) walk(u, gx, gz);
+        for (let n = 0; n < 3; n++) {
+          const b = S.units[k];
+          if (b.x !== gx || b.z !== gz) break;
+          if (!B.canDig(S, b, b.x, b.y - 1, b.z) || !action(`dig ${b.id} ${[b.x, b.y - 1, b.z]}`, () => B.dig(S, S.units[k], b.x, b.y - 1, b.z))) break;
+        }
+        continue;
+      }
       const r = roles[u.id] || {};
       const foe = nearestEnemy(u);
       const goal = r.goal || (foe ? [foe.x, foe.z] : [cx, cz]);

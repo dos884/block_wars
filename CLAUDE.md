@@ -43,8 +43,8 @@ Known gaps: archers have no line-of-sight; digging is unlimited per turn; dam br
 
 ## Decided, don't relitigate without asking
 - Deterministic combat. No moving/packing base in the base game.
-- Server-authoritative (needed for fog of war). Validating server, not a dumb relay.
-- In-turn actions stay local (undo/redo local). On End turn the client sends the turn's action list; the server replays it with the SAME sim code, validates, stores, forwards to the opponent.
+- CHANGED 2026-10-10: the server is a relay by default. It stores and forwards turns; the opponent's browser replays each turn and compares hashes, and a mismatch is reported (POST /desync) and stops the game ("Out of sync"). Server-side replay/validation is kept behind matches.verified (off for all matches) as a future PREMIUM feature (blocks cheating, makes real fog of war possible). Reason: replay costs server CPU (dam break ~1.7 s) and the user accepts that free games can be cheated, like engine use on chess.com.
+- In-turn actions stay local (undo/redo local). On End turn the client sends the turn's action list + hash (+ whether it won); the opponent replays it with the SAME sim code.
 - Monetization: donations/cosmetics, no ads in gameplay. Closed source for now, open source after the money phase.
 - Modding later: sandboxed interpreter (QuickJS or Lua in WASM), API = primitives + action registry + events. Matchmaking-first with mod veto/preference overlap.
 

@@ -11,7 +11,7 @@
    ========================================================= */
 const W = 96, D = 96, H = 40;                  // the bases are ~5 turns apart at 6 tiles per turn
 const WD = W * D, N = W * D * H;
-const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, WOOD = 4, BEDROCK = 5, LEAVES = 6;
+const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, WOOD = 4, BEDROCK = 5, LEAVES = 6, GOLD = 7;
 const SEED = 1;
 
 const idx = (x, y, z) => x + z * W + y * WD;
@@ -24,16 +24,20 @@ function mix(a) {
 }
 const rnd = (a, b, c) => mix(Math.imul(a, 73856093) ^ Math.imul(b, 19349663) ^ Math.imul(c, 83492791));
 
+// The natural ground height of a column (before the bridge, reservoir and trees go on top).
+function terrainTop(x, z, seed) {
+  const S = 14;                                 // hill size
+  const ix = (x / S) | 0, iz = (z / S) | 0, fx = x % S, fz = z % S;
+  const a = rnd(ix, iz, seed) % 7, b = rnd(ix + 1, iz, seed) % 7;
+  const c = rnd(ix, iz + 1, seed) % 7, d = rnd(ix + 1, iz + 1, seed) % 7;
+  const h = ((a * (S - fx) * (S - fz) + b * fx * (S - fz) + c * (S - fx) * fz + d * fx * fz) / (S * S)) | 0;
+  return 28 + h;                                // surface at 28..34: ~30 layers of underground to dig
+}
 function generate(seed, w) {
   const g = new Uint8Array(N);
-  const S = 14;                                 // hill size
   const heights = new Int32Array(WD);
   for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
-    const ix = (x / S) | 0, iz = (z / S) | 0, fx = x % S, fz = z % S;
-    const a = rnd(ix, iz, seed) % 7, b = rnd(ix + 1, iz, seed) % 7;
-    const c = rnd(ix, iz + 1, seed) % 7, d = rnd(ix + 1, iz + 1, seed) % 7;
-    const h = ((a * (S - fx) * (S - fz) + b * fx * (S - fz) + c * (S - fx) * fz + d * fx * fz) / (S * S)) | 0;
-    const top = 28 + h;                         // surface at 28..34: ~30 layers of underground to dig
+    const top = terrainTop(x, z, seed);
     heights[x + z * W] = top;
     for (let y = 0; y < top; y++) {
       g[idx(x, y, z)] = y === 0 ? BEDROCK : y < top - 3 ? STONE : y < top - 1 ? DIRT : GRASS;
@@ -106,6 +110,41 @@ function generate(seed, w) {
   return g;
 }
 
+/* ---------- Gold (rules 3): clusters of gold blocks underground, random per match but fair ----------
+   Every cluster on Blue's half has a mirror image on Red's half (x → W-1-x), each block the same depth (3-7) under
+   its own column's ground, so both sides dig exactly as far for the same gold. One pair sits near the middle. */
+function placeGold(g, goldSeed) {
+  const cx = W >> 1;
+  let n = 0;
+  const next = () => rnd(n++, goldSeed, 7777);
+  const top = (x, z) => terrainTop(x, z, SEED);
+  const set = (x, y, z) => { if (y >= 2 && inGrid(x, y, z) && (g[idx(x, y, z)] === STONE || g[idx(x, y, z)] === DIRT)) g[idx(x, y, z)] = GOLD; };
+  const put = (x, y, z) => {
+    const depth = top(x, z) - y, mx = W - 1 - x;
+    set(x, y, z);
+    set(mx, top(mx, z) - depth, z);
+  };
+  // A cluster is a few neighbouring columns of gold, each running from 3 to 7 blocks under the ground,
+  // so whichever of those layers you look at (the layer view), every cluster shows up in it.
+  // Columns are never reused, so the total is exact: (6 x 4 + 4) columns x 5 blocks = 140 blocks = 10,500 gold a side.
+  const used = new Set();
+  const cluster = (x0, x1, columns) => {
+    let x = x0 + next() % (x1 - x0 + 1), z = 6 + next() % (D - 12);
+    for (let made = 0, tries = 0; made < columns && tries < 200; tries++) {
+      if (!used.has(x + z * W)) {
+        used.add(x + z * W);
+        for (let depth = 3; depth <= 7; depth++) put(x, top(x, z) - depth, z);
+        made++;
+      }
+      const d = next() % 4;                      // step to a neighbouring column
+      x = Math.max(2, Math.min(cx - 1, x + (d === 0) - (d === 1)));
+      z = Math.max(2, Math.min(D - 3, z + (d === 2) - (d === 3)));
+    }
+  };
+  for (let k = 0; k < 6; k++) cluster(4, cx - 6, 4);   // six on each side, anywhere
+  cluster(cx - 7, cx - 2, 4);                           // one pair close to the middle, to fight over                                        // one bigger pair close to the middle
+}
+
 const TEAM_NAMES = ['Blue', 'Red'];
 const TEAM_COLORS = [0x3b82c4, 0xe0453a];
 const MAX_HP = 10;
@@ -147,8 +186,14 @@ const RULES = {
     beats: { soldier: 'spearman', spearman: 'knight', knight: 'soldier' },
   },
 };
-const LATEST_RULES = 2;
-const SOFT = [0, 1, 1, 0, 1, 0, 1];             // grass, dirt, wood, leaves: infantry can dig these
+//  3: the gold economy: no villages; builders mine gold blocks (+75 each); bases pay 50 a turn;
+//     the gold layout is random per match (a seed stored with it) but mirrored between the sides.
+//     Only builders dig; every cell a builder digs gets ladders, which units (not knights) climb.
+//     Knights can step up one block like everyone else.
+RULES[3] = { ...RULES[2], villages: false, income: 50, goldValue: 75, goldMap: true, builderDigs: true, ladders: true, knightSteps: true };
+const LATEST_RULES = 3;
+//                air grass dirt stone wood bedrock leaves gold
+const SOFT = [     0,   1,    1,   0,    1,   0,      1,     0 ];   // grass, dirt, wood, leaves: infantry can dig these
 const unitName = u => UNIT_TYPES[u.type].label + ' ' + (u.id + 1);
 
 /* ---------- Buildings: villages give gold, each team's base builds units; capturing the enemy base wins ---------- */
@@ -297,9 +342,18 @@ function waterStep(s) {
   return changed;
 }
 
+/* ---------- Ladders (rules 3): a set of air cells you can climb. A block filling the cell removes its ladder. ---------- */
+const zl = i => mix(Math.imul(i, 32) + 77777);
+function addLadder(s, i) { if (s.lad && !s.lad.has(i)) { s.lad.add(i); s.lh ^= zl(i); } }
+function dropLadder(s, i) { if (s.lad && s.lad.has(i)) { s.lad.delete(i); s.lh ^= zl(i); } }
+const hasLadder = (s, x, y, z) => !!s.lad && inGrid(x, y, z) && s.lad.has(idx(x, y, z));
+const climbsLadders = u => u.type !== 'knight';
+const onLadder = (s, u) => climbsLadders(u) && hasLadder(s, u.x, u.y, u.z);
+
 function setCell(s, i, v) {
   const old = s.g[i];
   if (old === v) return;
+  if (v !== AIR) dropLadder(s, i);
   if (s.jr && s.jg[i] !== s.jstamp) { s.jg[i] = s.jstamp; s.jr.gi.push(i); s.jr.go.push(old); }
   if (v !== AIR && s.w[i]) {                     // a block landing in water pushes the water up (overflow is lost)
     const a = i + WD;
@@ -315,16 +369,19 @@ function setCell(s, i, v) {
   else { if (x < r.x0) r.x0 = x; if (x > r.x1) r.x1 = x; if (z < r.z0) r.z0 = z; if (z > r.z1) r.z1 = z; }
 }
 
-function newState(rules = LATEST_RULES) {
-  if (!RULES[rules]) throw new Error('unknown rules version ' + rules);
+function newState(rules = LATEST_RULES, seed = 1) {
+  const R = RULES[rules];
+  if (!R) throw new Error('unknown rules version ' + rules);
   const w = new Uint8Array(N);
   const g = generate(SEED, w);
+  if (R.goldMap) placeGold(g, seed);
   const cx = W >> 1, cz = D >> 1;
   const spots = [];
   spots.push(...UNIT_SPAWNS);
   const units = spots.map(([team, x, z], k) => ({ id: k, type: 'soldier', team, x, y: groundY(g, x, z), z, hp: MAX_HP, moved: false, acted: false, dead: false }));
-  const buildings = BUILDING_SPOTS.map(([x, z, kind, owner]) => ({ kind, owner, x, y: groundY(g, x, z), z, cp: CAPTURE_PTS, capBy: -1 }));
-  return { rules, g, units, buildings, gold: [START_GOLD, START_GOLD], built: false, winner: -1, team: 0, turn: 1, moves: 0, events: [], loot: [], nextLoot: 1, inv: [0, 0, 0, 0, 0, 0, 0],
+  const buildings = BUILDING_SPOTS.filter(([, , kind]) => kind === 'base' || R.villages !== false)
+    .map(([x, z, kind, owner]) => ({ kind, owner, x, y: groundY(g, x, z), z, cp: CAPTURE_PTS, capBy: -1 }));
+  return { rules, seed, lad: R.ladders ? new Set() : undefined, lh: 0, g, units, buildings, gold: [START_GOLD, START_GOLD], built: false, winner: -1, team: 0, turn: 1, moves: 0, events: [], loot: [], nextLoot: 1, inv: [0, 0, 0, 0, 0, 0, 0],
            bh: blockHash(g), changed: [], region: null,
            w, wh: waterHash(w), wnext: [], wmark: new Int32Array(N), wgen: 1, dfail: new Int32Array(N),
            jr: null, jg: new Int32Array(N), jw: new Int32Array(N), jstamp: 0, history: [], cursor: 0, wchanged: [], wtick: 0 };
@@ -355,7 +412,7 @@ function settleUnits(s) {
     moved = false;
     for (const u of s.units) {
       if (u.dead) continue;
-      if (u.y > 1 && !solidAt(s, u.x, u.y - 1, u.z) && !unitAt(s, u.x, u.y - 1, u.z, u)) { u.y--; moved = true; }
+      if (u.y > 1 && !solidAt(s, u.x, u.y - 1, u.z) && !unitAt(s, u.x, u.y - 1, u.z, u) && !onLadder(s, u)) { u.y--; moved = true; }
     }
   }
   collectLoot(s);
@@ -368,7 +425,8 @@ const cellKey = (x, y, z) => x + ',' + y + ',' + z;
 // From a free cell, drop to where a unit would stand. -1 if the cell isn't free.
 function standY(s, x, y, z, u) {
   if (!freeCell(s, x, y, z, u)) return -1;
-  while (y > 1 && !solidAt(s, x, y - 1, z) && !unitAt(s, x, y - 1, z, u)) y--;
+  // Drop until something holds you: ground, a unit below, or (for climbers) a ladder.
+  while (y > 1 && !solidAt(s, x, y - 1, z) && !unitAt(s, x, y - 1, z, u) && !(climbsLadders(u) && hasLadder(s, x, y, z))) y--;
   return y;
 }
 // One step from (x,y,z) toward a neighbouring column: walk flat, drop, or climb one. Returns the new y, or -1.
@@ -376,7 +434,8 @@ function stepTo(s, u, x, y, z, dx, dz) {
   const t = UNIT_TYPES[u.type], nx = x + dx, nz = z + dz;
   let ny = standY(s, nx, y, nz, u);
   if (ny < 0) {
-    if (t.noClimb || !solidAt(s, nx, y, nz)) return -1;        // knights can't climb; units and edges block
+    const noClimb = t.noClimb && !RULES[s.rules || 1].knightSteps;
+    if (noClimb || !solidAt(s, nx, y, nz)) return -1;        // knights can't climb (before rules 3); units and edges block
     if (!freeCell(s, x, y + 1, z, u) || !freeCell(s, nx, y + 1, nz, u)) return -1;
     ny = y + 1;
   }
@@ -384,6 +443,20 @@ function stepTo(s, u, x, y, z, dx, dz) {
   return ny;
 }
 const moveOf = u => UNIT_TYPES[u.type].move;
+// Every cell one move away: the four neighbouring columns, plus up and down a ladder.
+function stepsFrom(s, u, x, y, z) {
+  const out = [];
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const ny = stepTo(s, u, x, y, z, dx, dz);
+    if (ny >= 0) out.push([x + dx, ny, z + dz]);
+  }
+  if (climbsLadders(u) && hasLadder(s, x, y, z)) {
+    if (hasLadder(s, x, y + 1, z) && freeCell(s, x, y + 1, z, u)) out.push([x, y + 1, z]);   // climb up
+    const dy = y > 1 ? standY(s, x, y - 1, z, u) : -1;                                          // climb (or drop) down
+    if (dy >= 1) out.push([x, dy, z]);
+  }
+  return out;
+}
 function moveRange(s, u, steps) {
   const dist = new Map();
   const q = [[u.x, u.y, u.z]];
@@ -391,12 +464,9 @@ function moveRange(s, u, steps) {
   for (let h = 0; h < q.length; h++) {
     const [x, y, z] = q[h], d = dist.get(cellKey(x, y, z));
     if (d >= steps) continue;
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const ny = stepTo(s, u, x, y, z, dx, dz);
-      if (ny < 0) continue;
-      const nx = x + dx, nz = z + dz;
-      const k = cellKey(nx, ny, nz);
-      if (!dist.has(k)) { dist.set(k, d + 1); q.push([nx, ny, nz]); }
+    for (const c of stepsFrom(s, u, x, y, z)) {
+      const k = cellKey(...c);
+      if (!dist.has(k)) { dist.set(k, d + 1); q.push(c); }
     }
   }
   return dist;
@@ -413,17 +483,24 @@ function moveUnit(s, u, x, y, z) {
 }
 /* ---------- Digging: break any block within DIG_REACH of the unit (no limit per turn) ---------- */
 const DIG_REACH = 3;
+// What a unit can dig: 'none', 'soft' or 'hard'. Under rules 3 only builders dig.
+const digTool = (s, u) => RULES[s.rules || 1].builderDigs && u.type !== 'builder' ? 'none' : UNIT_TYPES[u.type].dig;
 function canDig(s, u, x, y, z) {
   if (u.dead || u.team !== s.team || !inGrid(x, y, z)) return false;
   const m = s.g[idx(x, y, z)];
   if (m === AIR || m === BEDROCK) return false;
-  const tool = UNIT_TYPES[u.type].dig;
+  const tool = digTool(s, u);
   if (tool === 'none' || (tool === 'soft' && !SOFT[m])) return false;
   return Math.max(Math.abs(x - u.x), Math.abs(y - u.y), Math.abs(z - u.z)) <= DIG_REACH;
 }
 function dig(s, u, x, y, z) {
   if (!canDig(s, u, x, y, z)) return false;
+  const m = s.g[idx(x, y, z)];
   setCell(s, idx(x, y, z), AIR);
+  if (RULES[s.rules || 1].ladders && y < u.y) addLadder(s, idx(x, y, z));  // digging below your feet leaves a ladder
+  // Digging the block under your own feet takes you down into the hole (you don't hang on its ladder).
+  if (RULES[s.rules || 1].ladders && x === u.x && z === u.z && y === u.y - 1) { u.y = y; settleUnits(s); }
+  if (m === GOLD) s.gold[s.team] += RULES[s.rules || 1].goldValue || 0;   // mining pays at once
   s.moves++;
   record(s, { t: 'dig', u: u.id, x, y, z });
   return true;
@@ -509,7 +586,7 @@ function buildUnit(s, type) {
   record(s, { t: 'build', type });
   return u;
 }
-const incomeOf = (s, team) => INCOME * s.buildings.filter(b => b.owner === team).length;
+const incomeOf = (s, team) => (RULES[s.rules || 1].income || INCOME) * s.buildings.filter(b => b.owner === team).length;
 
 /* ---------- Turns as data: what the client sends and the server replays ----------
    Every successful player action is recorded in the current journal entry, so a turn is simply the list of
@@ -567,7 +644,8 @@ function finishTurn(s) {
 function smallSnap(s) {
   return JSON.parse(JSON.stringify({ units: s.units, loot: s.loot, nextLoot: s.nextLoot, inv: s.inv, team: s.team, turn: s.turn,
     moves: s.moves, bh: s.bh, wh: s.wh, wtick: s.wtick, wnext: s.wnext,
-    buildings: s.buildings, gold: s.gold, built: s.built, winner: s.winner }));
+    buildings: s.buildings, gold: s.gold, built: s.built, winner: s.winner,
+    lad: s.lad ? [...s.lad] : undefined, lh: s.lh }));
 }
 function applySmall(s, m) {
   s.units = JSON.parse(JSON.stringify(m.units));   // also undoes units that were built
@@ -577,6 +655,7 @@ function applySmall(s, m) {
   s.loot = JSON.parse(JSON.stringify(m.loot));
   s.inv = m.inv.slice();
   Object.assign(s, { nextLoot: m.nextLoot, team: m.team, turn: m.turn, moves: m.moves, bh: m.bh, wh: m.wh, wtick: m.wtick });
+  if (m.lad) { s.lad = new Set(m.lad); s.lh = m.lh; }
   s.wgen++; s.wnext = [];                       // fresh wake list (normally empty between actions)
   for (const i of m.wnext) if (s.wmark[i] !== s.wgen) { s.wmark[i] = s.wgen; s.wnext.push(i); }
   s.region = null;
@@ -655,9 +734,10 @@ function neighbours(i) {
      #       #        #
 */
 //                 air grass dirt stone wood bedrock leaves
-const REACH   = [  0,   1,    1,   2,    3,   0,      2 ];
-const FRAGILE = [  0,   1,    1,   0,    1,   0,      1 ];  // fragile crumbles one block at a time and vanishes
-const LOOT    = [  0,   0,    0,   0,    4,   0,      0 ];  // what a crumbled block leaves behind (4 = wood)
+//                 air grass dirt stone wood bedrock leaves gold
+const REACH   = [  0,   1,    1,   2,    3,   0,      2,     2 ];
+const FRAGILE = [  0,   1,    1,   0,    1,   0,      1,     0 ];  // fragile crumbles one block at a time and vanishes
+const LOOT    = [  0,   0,    0,   0,    4,   0,      0,     0 ];  // what a crumbled block leaves behind (4 = wood)
 const MAX_REACH = 3;
 const UNSUP = 255;
 const sdist = new Uint8Array(N);
@@ -814,6 +894,7 @@ function stateHash(s) {
   for (const l of s.loot) for (const v of [l.x, l.y, l.z, l.m, l.n]) { h ^= v; h = Math.imul(h, 0x01000193); }
   h ^= s.turn; h = Math.imul(h, 0x01000193);
   for (const v of s.inv) { h ^= v; h = Math.imul(h, 0x01000193); }
+  if (s.lad) { h ^= s.lh; h = Math.imul(h, 0x01000193); }      // ladders (rules 3; older rules hash as before)
   return (h >>> 0).toString(16).padStart(8, '0');
 }
 
@@ -826,13 +907,13 @@ function resolve(s) {
 }
 
 const BlockSim = {
-  W, D, H, WD, N, AIR, GRASS, DIRT, STONE, WOOD, BEDROCK, LEAVES, WFULL, MAX_HP, CAPTURE_PTS, INCOME, DIG_REACH, MAX_WATER_STEPS,
+  W, D, H, WD, N, AIR, GRASS, DIRT, STONE, WOOD, BEDROCK, LEAVES, GOLD, WFULL, MAX_HP, CAPTURE_PTS, INCOME, DIG_REACH, MAX_WATER_STEPS,
   TEAM_NAMES, TEAM_COLORS, TYPES, UNIT_TYPES, DAMAGE, RULES, LATEST_RULES, damageOf,
   idx, inGrid, mix, unitName, cellKey, newState, stateHash,
-  solidAt, unitAt, stepTo, moveOf, moveRange, moveUnit, canDig, dig, canAttack, attack,
+  solidAt, unitAt, stepTo, stepsFrom, moveOf, moveRange, moveUnit, canDig, digTool, dig, canAttack, attack, hasLadder, climbsLadders,
   canCapture, capture, canBuild, buildUnit, incomeOf,
   beginAction, endAction, undo, redo, endTurn, gravityStep, waterStep, resolve,
-  turnGroups, runGroup, replayTurn, finishTurn,
+  turnGroups, runGroup, replayTurn, finishTurn, MAX_GROUPS,
 };
 if (typeof module === 'object' && module.exports) module.exports = BlockSim;
 else root.BlockSim = BlockSim;

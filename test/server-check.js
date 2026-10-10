@@ -14,7 +14,7 @@ const ok = (cond, msg) => { console.log((cond ? 'ok   ' : 'FAIL ') + msg); if (!
 
 function start() {
   const p = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', path.join(__dirname, '..', 'server', 'server.js')],
-    { env: { ...process.env, PORT, DB, PUSH_TEST: '1' }, stdio: ['ignore', 'pipe', 'inherit'] });
+    { env: { ...process.env, PORT, DB, PUSH_TEST: '1', TEST_SEED: '1' }, stdio: ['ignore', 'pipe', 'inherit'] });   // gold map of the scripted match
   return new Promise(res => p.stdout.on('data', d => { if (String(d).includes('server on')) res(p); }));
 }
 const stop = p => new Promise(res => { p.on('exit', res); p.kill(); });

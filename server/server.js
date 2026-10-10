@@ -77,6 +77,12 @@ if (!cols.includes('p0')) db.exec(`ALTER TABLE matches ADD COLUMN p0 TEXT; ALTER
 if (!cols.includes('rules')) db.exec('ALTER TABLE matches ADD COLUMN rules INTEGER NOT NULL DEFAULT 1');
 // A player can quit: the other side wins. -1 = nobody quit.
 if (!cols.includes('quit')) db.exec('ALTER TABLE matches ADD COLUMN quit INTEGER NOT NULL DEFAULT -1');
+// The match's map seed (rules 3+: where the gold is). Older matches have one map: seed 1.
+if (!cols.includes('seed')) db.exec('ALTER TABLE matches ADD COLUMN seed INTEGER NOT NULL DEFAULT 1');
+// verified = the server replays and checks every turn (a future premium feature); otherwise it only relays them
+// and the players' browsers check each other's hashes. desync = the first turn a browser couldn't reproduce.
+if (!cols.includes('verified')) db.exec(`ALTER TABLE matches ADD COLUMN verified INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE matches ADD COLUMN desync INTEGER NOT NULL DEFAULT -1;`);
 
 const q = {
   insertPlayer: db.prepare('INSERT INTO players (id, name, created, seen) VALUES (?, ?, ?, ?)'),
@@ -94,7 +100,7 @@ const q = {
   linkGoogle: db.prepare('UPDATE players SET google = ? WHERE id = ?'),
   moveSeats0: db.prepare('UPDATE matches SET p0 = ? WHERE p0 = ? AND (p1 IS NULL OR p1 != ?)'),
   moveSeats1: db.prepare('UPDATE matches SET p1 = ? WHERE p1 = ? AND (p0 IS NULL OR p0 != ?)'),
-  insertMatch: db.prepare('INSERT INTO matches (id, created, updated, t0, p0, p1, kind, rules) VALUES (?, ?, ?, \'\', ?, ?, ?, ?)'),
+  insertMatch: db.prepare('INSERT INTO matches (id, created, updated, t0, p0, p1, kind, rules, seed) VALUES (?, ?, ?, \'\', ?, ?, ?, ?, ?)'),
   getMatch: db.prepare('SELECT * FROM matches WHERE id = ?'),
   quit: db.prepare('UPDATE matches SET quit = ?, winner = ?, rev = rev + 1, updated = ? WHERE id = ? AND winner < 0'),
   cancel: db.prepare('DELETE FROM matches WHERE id = ? AND p1 IS NULL AND t1 IS NULL'),
@@ -106,6 +112,7 @@ const q = {
   getTurn: db.prepare('SELECT body FROM turns WHERE match = ? AND n = ?'),
   insertTurn: db.prepare('INSERT INTO turns (match, n, team, body, hash, created) VALUES (?, ?, ?, ?, ?, ?)'),
   afterTurn: db.prepare('UPDATE matches SET turns = turns + 1, rev = rev + 1, winner = ?, updated = ? WHERE id = ?'),
+  desync: db.prepare('UPDATE matches SET desync = ?, rev = rev + 1, updated = ? WHERE id = ? AND desync < 0'),
   queued: db.prepare('SELECT * FROM queue WHERE player = ?'),
   enqueue: db.prepare('INSERT OR REPLACE INTO queue (player, created, matched) VALUES (?, ?, NULL)'),
   oldestWaiting: db.prepare('SELECT * FROM queue WHERE matched IS NULL AND player != ? AND created > ? ORDER BY created LIMIT 1'),
@@ -130,10 +137,10 @@ const cleanName = s => String(s || '').normalize('NFC').replace(/[\u0000-\u001f\
 
 /* ---------- Live states: a match replayed up to its last turn ---------- */
 const cache = new Map();                       // id → { S, n }, in least-recently-used order
-function liveState(id, rules) {
+function liveState(id, rules, seed) {
   let c = cache.get(id);
   if (c) { cache.delete(id); cache.set(id, c); return c; }
-  const S = B.newState(rules);
+  const S = B.newState(rules, seed);
   const rows = q.turnsFrom.all(id, 0);
   for (const r of rows) {
     const err = B.replayTurn(S, JSON.parse(r.body));
@@ -262,12 +269,12 @@ function gameSummary(m, me) {
 }
 function matchView(m, since, me) {
   const turns = q.turnsFrom.all(m.id, since).map(r => ({ n: r.n, team: r.team, ...JSON.parse(r.body) }));
-  return { id: m.id, rules: m.rules, rev: m.rev, you: seatOf(m, me), names: [nameOf(m.p0), nameOf(m.p1)], players: [true, !!(m.p1 || m.t1)],
-           winner: m.winner, quit: m.quit, count: m.turns, turns };
+  return { id: m.id, rules: m.rules, seed: m.seed, rev: m.rev, you: seatOf(m, me), names: [nameOf(m.p0), nameOf(m.p1)], players: [true, !!(m.p1 || m.t1)],
+           winner: m.winner, quit: m.quit, verified: !!m.verified, desync: m.desync, count: m.turns, turns };
 }
 function createMatch(kind, p0, p1) {
   const id = newId(6), now = Date.now();
-  q.insertMatch.run(id, now, now, p0, p1, kind, B.LATEST_RULES);
+  q.insertMatch.run(id, now, now, p0, p1, kind, B.LATEST_RULES, process.env.TEST_SEED ? +process.env.TEST_SEED : 1 + crypto.randomInt(2147483000));
   return id;
 }
 
@@ -426,20 +433,40 @@ async function handle(req, res) {
     if (seat !== m.turns % 2) throw new Fail(409, 'not your turn');
     if (m.winner >= 0) throw new Fail(409, 'match is over');
     if (text.length > MAX_BODY) throw new Fail(413, 'turn too big');
-    const live = liveState(id, m.rules);
+    if (!Array.isArray(turn.groups) || turn.groups.length > B.MAX_GROUPS || typeof turn.hash !== 'string' || turn.hash.length > 16)
+      throw new Fail(400, 'bad turn');
+    if (m.desync >= 0) throw new Fail(409, 'this game is out of sync');
     const t0 = Date.now();
-    const err = B.replayTurn(live.S, turn);
-    if (err) {
-      cache.delete(id);                        // half-applied: rebuild from storage next time
-      console.warn(`match ${id} turn ${m.turns} refused: ${err}`);
-      throw new Fail(422, 'turn refused: ' + err);
+    let winner;
+    if (m.verified) {                          // premium: replay with the same sim code and refuse anything wrong
+      const live = liveState(id, m.rules, m.seed);
+      const err = B.replayTurn(live.S, turn);
+      if (err) {
+        cache.delete(id);                      // half-applied: rebuild from storage next time
+        console.warn(`match ${id} turn ${m.turns} refused: ${err}`);
+        throw new Fail(422, 'turn refused: ' + err);
+      }
+      live.n++;
+      winner = live.S.winner;
+    } else {                                   // relay: the sender says whether it won; the opponent's browser checks it all
+      winner = body.winner === seat ? seat : -1;
     }
-    live.n++;
     q.insertTurn.run(id, m.turns, seat, text, turn.hash, now);
-    q.afterTurn.run(live.S.winner, now, id);
+    q.afterTurn.run(winner, now, id);
     changed(id, seat === 0 ? m.p1 : m.p0);
     console.log(`match ${id} turn ${m.turns} ok (${turn.groups.length} groups, ${Date.now() - t0} ms)`);
     return send(res, 200, { ok: true, n: m.turns });
+  }
+
+  // A player's browser replayed turn n and got a different result: the game stops, and both players see why.
+  if (req.method === 'POST' && action === 'desync') {
+    const body = await readJson(req);
+    if (seatOf(m, me) < 0) throw new Fail(403, 'not a player in this match');
+    if (!Number.isInteger(body.n) || body.n < 0 || body.n >= m.turns) throw new Fail(400, 'bad turn number');
+    q.desync.run(body.n, now, id);
+    console.warn(`match ${id}: ${nameOf(me.id)} could not reproduce turn ${body.n}: ${String(body.reason || '').slice(0, 200)}`);
+    notify(id);
+    return send(res, 200, { ok: true });
   }
 
   return send(res, 405, { error: 'method not allowed' });
