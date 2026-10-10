@@ -367,7 +367,7 @@ body.lobby #hud, body.lobby #controls, body.lobby #layers{display:none}
    SIM — lives in sim-core.js (shared with the server). The view only reads it and calls its actions.
    ========================================================= */
 const {
-  W, D, H, WD, AIR, DIRT, STONE, WOOD, BEDROCK, LEAVES, WFULL, MAX_HP, CAPTURE_PTS, INCOME,
+  W, D, H, WD, AIR, GRASS, DIRT, STONE, WOOD, BEDROCK, LEAVES, GOLD, WFULL, MAX_HP, CAPTURE_PTS, INCOME,
   TEAM_NAMES, TEAM_COLORS, TYPES, UNIT_TYPES,
   idx, inGrid, mix, unitName, cellKey, newState, stateHash,
   stepTo, stepsFrom, moveOf, moveRange, moveUnit, canDig, digTool, dig, canAttack, attack, hasLadder, climbsLadders,
@@ -394,10 +394,11 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 140);
 
 function cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+const skyColor = new THREE.Color();
 function applyTheme() {
-  const sky = new THREE.Color(cssVar('--sky') || '#bcd6e8');
-  scene.background = sky;
-  scene.fog = new THREE.Fog(sky, 45, 110);
+  skyColor.set(cssVar('--sky') || '#bcd6e8');
+  scene.background = skyColor.clone();
+  scene.fog = new THREE.Fog(skyColor.clone(), 45, 110);
 }
 applyTheme();
 if (window.matchMedia) {
@@ -410,13 +411,76 @@ const sun = new THREE.DirectionalLight(0xffffff, 0.7);
 sun.position.set(0.6, 1, 0.35);
 scene.add(sun);
 
-// Blocks: one instanced mesh, rebuilt after every change.
-const blockGeo = new THREE.BoxGeometry(0.97, 0.97, 0.97);
-const blockMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+// Underground vision: when the selected unit is underground, everything farther than uFogR from it fades to black.
+const sphereFog = { uFog: { value: 0 }, uFogC: { value: new THREE.Vector3() }, uFogR: { value: 18 } };
+function withSphereFog(sh) {
+  Object.assign(sh.uniforms, sphereFog);
+  sh.vertexShader = 'varying vec3 vFogW;\n' + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
+  {
+    vec4 fw = vec4(transformed, 1.0);
+  #ifdef USE_INSTANCING
+    fw = instanceMatrix * fw;
+  #endif
+    vFogW = (modelMatrix * fw).xyz;
+  }`);
+  sh.fragmentShader = 'varying vec3 vFogW;\nuniform float uFog; uniform vec3 uFogC; uniform float uFogR;\n' + sh.fragmentShader.replace('#include <fog_fragment>', `#include <fog_fragment>
+  if (uFog > 0.0) gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.0), uFog * smoothstep(uFogR - 5.0, uFogR, distance(vFogW, uFogC)));`);
+}
+
+// Block textures: one 32x32 pixel tile per material (grass has a top and a side), in a single atlas.
+// A faint darker border on every tile draws the lines between blocks.
+const TILE = 32, TILES = 8;                     // 0 grass top, 1 grass side, 2 dirt, 3 stone, 4 wood, 5 bedrock, 6 leaves, 7 gold
+const atlasTex = (() => {
+  const c = document.createElement('canvas'); c.width = TILE * TILES; c.height = TILE;
+  const ctx = c.getContext('2d'), img = ctx.createImageData(c.width, c.height);
+  let seed = 7;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  const rgb = h => [(h >> 16) & 255, (h >> 8) & 255, h & 255];
+  const put = (t, x, y, [r, g, b], k) => {
+    if (x === 0 || y === 0 || x === TILE - 1 || y === TILE - 1) k *= 0.8;          // the faint block outline
+    const o = (y * c.width + t * TILE + x) * 4;
+    img.data[o] = Math.min(255, r * k); img.data[o + 1] = Math.min(255, g * k); img.data[o + 2] = Math.min(255, b * k); img.data[o + 3] = 255;
+  };
+  // A noisy tile: base colour with a few accent colours sprinkled at the given rates.
+  const speckle = (t, base, accents, jitter = 0.08) => {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      let col = base, r = rnd();
+      for (const [hex, rate] of accents) { if (r < rate) { col = hex; break; } r -= rate; }
+      put(t, x, y, rgb(col), 1 - jitter + rnd() * jitter * 2);
+    }
+  };
+  speckle(0, 0x6aa84f, [[0x8bc56a, 0.10], [0x4f8a3a, 0.08]]);                          // grass top
+  speckle(2, 0x8b5a34, [[0x6e4528, 0.12], [0xa77548, 0.06], [0x8e9198, 0.02]]);        // dirt
+  speckle(1, 0x8b5a34, [[0x6e4528, 0.12], [0xa77548, 0.06]]);                          // grass side: dirt…
+  for (let x = 0; x < TILE; x++) {                                                      // …with a grass band that drips
+    const drip = 5 + ((rnd() * 4) | 0);
+    for (let y = 0; y < drip; y++) put(1, x, y, rgb(rnd() < 0.15 ? 0x8bc56a : 0x6aa84f), 0.95 + rnd() * 0.1);
+  }
+  speckle(3, 0x8e9198, [[0x75787f, 0.10], [0xa4a7ae, 0.06]]);                          // stone…
+  for (let k = 0; k < 5; k++) {                                                         // …with a few cracks
+    let x = (rnd() * TILE) | 0, y = (rnd() * TILE) | 0;
+    for (let n = 0; n < 7; n++) { put(3, x, y, rgb(0x63666c), 1); x = Math.max(1, Math.min(TILE - 2, x + ((rnd() * 3) | 0) - 1)); y = Math.max(1, Math.min(TILE - 2, y + 1)); }
+  }
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++)                        // wood: vertical grain
+    put(4, x, y, rgb(x % 6 === 0 || (x % 6 === 3 && rnd() < 0.5) ? 0x8f6638 : 0xb4864f), 0.92 + rnd() * 0.12);
+  speckle(5, 0x3a3a42, [[0x26262c, 0.25], [0x55555e, 0.15]], 0.15);                  // bedrock
+  speckle(6, 0x3f8f3b, [[0x2f6f2c, 0.25], [0x5aa553, 0.10]], 0.1);                   // leaves
+  speckle(7, 0xdcaa22, [[0xffe066, 0.16], [0xa87a12, 0.14], [0xfff6c8, 0.03]], 0.1); // gold
+  ctx.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
+  return t;
+})();
+const tileOf = (m, face) => m === GRASS ? (face === 't' ? 0 : face === 'b' ? 2 : 1) : { 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7 }[m];
+
+// Blocks: one mesh per chunk made of only the faces that border open space, so blocks meet without gaps.
+const blockGeo = new THREE.BoxGeometry(0.97, 0.97, 0.97);     // still used by the falling-block effect
+const blockMat = new THREE.MeshLambertMaterial({ map: atlasTex, vertexColors: true });
 // Ghost blocks: block surfaces closer to the camera than the selected unit, inside a circle around it on screen,
 // are dithered away so you can see the unit through a hill. uCut fades it in and out (0 = off).
 const ghost = { uCut: { value: 0 }, uUnitPx: { value: new THREE.Vector2() }, uRadiusPx: { value: 1 }, uUnitDepth: { value: 0 } };
 blockMat.onBeforeCompile = sh => {
+  withSphereFog(sh);
   Object.assign(sh.uniforms, ghost);
   sh.vertexShader = 'varying float vCutDepth;\n' + sh.vertexShader.replace('#include <project_vertex>',
     '#include <project_vertex>\n  vCutDepth = -mvPosition.z;');
@@ -435,7 +499,7 @@ float bayer2(vec2 p) { p = floor(mod(p, 2.0)); return (p.x * 2.0 + p.y * 3.0 - 4
 };
 // Chunked rendering: one instanced mesh per 32x32 column chunk; a change redraws only the chunks it touches.
 const CH = 16, NCX = W / CH, NCZ = D / CH;
-const chunkMeshes = [], chunkCap = [];
+const chunkMeshes = [];
 const visBuf = new Int32Array(CH * CH * H);
 const tmpM = new THREE.Matrix4(), tmpC = new THREE.Color();
 // Layer view: blocks from cut.y upward are hidden around the view centre, so you look down onto one layer.
@@ -443,48 +507,60 @@ const tmpM = new THREE.Matrix4(), tmpC = new THREE.Color();
 const CUT_R = 40;                               // hide within this many columns of the view centre
 let cut = null;                                 // { x, y, z } or null
 const hiddenCell = (x, y, z) => cut !== null && y >= cut.y && Math.abs(x - cut.x) <= CUT_R && Math.abs(z - cut.z) <= CUT_R;
-function exposed(x, y, z) {
-  const g = S.g;
-  const open = (X, Y, Z) => {
-    if (Y < 0 || X < 0 || X >= W || Z < 0 || Z >= D) return false;   // world edges and the underside stay closed
-    if (Y >= H) return true;
-    if (hiddenCell(X, Y, Z)) return true;
-    return g[idx(X, Y, Z)] === AIR;
-  };
-  return open(x + 1, y, z) || open(x - 1, y, z) || open(x, y + 1, z) || open(x, y - 1, z) || open(x, y, z + 1) || open(x, y, z - 1);
+// Can you see this cell's neighbour face? World edges and the underside stay closed; the sky and cut-away cells are open.
+function openCell(X, Y, Z) {
+  if (Y < 0 || X < 0 || X >= W || Z < 0 || Z >= D) return false;
+  if (Y >= H) return true;
+  if (hiddenCell(X, Y, Z)) return true;
+  return S.g[idx(X, Y, Z)] === AIR;
 }
+// Each face: outward normal, its 4 corners counter-clockwise seen from outside, and which texture (side/top/bottom).
+const FACES = [
+  [[1, 0, 0], [[1, 0, 1], [1, 0, 0], [1, 1, 0], [1, 1, 1]], 's'],
+  [[-1, 0, 0], [[0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 1, 0]], 's'],
+  [[0, 0, 1], [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]], 's'],
+  [[0, 0, -1], [[1, 0, 0], [0, 0, 0], [0, 1, 0], [1, 1, 0]], 's'],
+  [[0, 1, 0], [[0, 1, 1], [1, 1, 1], [1, 1, 0], [0, 1, 0]], 't'],
+  [[0, -1, 0], [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]], 'b'],
+];
+const CORNER_UV = [[0, 0], [1, 0], [1, 1], [0, 1]];
 function rebuildChunk(k) {
   const g = S.g, cx0 = (k % NCX) * CH, cz0 = ((k / NCX) | 0) * CH;
-  let n = 0;
-  for (let y = H - 1; y >= 0; y--) for (let z = cz0; z < cz0 + CH; z++) for (let x = cx0; x < cx0 + CH; x++) {
-    const i = idx(x, y, z);
-    if (g[i] && !hiddenCell(x, y, z) && exposed(x, y, z)) visBuf[n++] = i;
+  const pos = [], nor = [], uv = [], col = [], ind = [];
+  for (let y = 0; y < H; y++) for (let z = cz0; z < cz0 + CH; z++) for (let x = cx0; x < cx0 + CH; x++) {
+    const i = idx(x, y, z), m = g[i];
+    if (!m || hiddenCell(x, y, z)) continue;
+    let shade = 0.9 + (mix(i * 31 + 7) % 11) / 100;                  // a little variation from block to block
+    if (hiddenCell(x, y + 1, z)) shade *= 0.62;                        // the cut surface reads as a slice
+    for (const [n, corners, face] of FACES) {
+      if (!openCell(x + n[0], y + n[1], z + n[2])) continue;
+      const t = tileOf(m, face), base = pos.length / 3;
+      for (let c = 0; c < 4; c++) {
+        pos.push(x + corners[c][0], y + corners[c][1], z + corners[c][2]);
+        nor.push(n[0], n[1], n[2]);
+        uv.push((t * TILE + 0.5 + CORNER_UV[c][0] * (TILE - 1)) / (TILE * TILES), (0.5 + CORNER_UV[c][1] * (TILE - 1)) / TILE);
+        col.push(shade, shade, shade);
+      }
+      ind.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    }
   }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.setIndex(ind);
   let mesh = chunkMeshes[k];
-  if (!mesh || chunkCap[k] < n) {
-    if (mesh) { scene.remove(mesh); if (mesh.dispose) mesh.dispose(); }
-    const cap = Math.max(64, Math.ceil(n * 1.5));
-    mesh = new THREE.InstancedMesh(blockGeo, blockMat, cap);
-    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  if (!mesh) {
+    mesh = new THREE.Mesh(geo, blockMat);
     mesh.frustumCulled = false;
     mesh.userData.chunk = true;
-    mesh.userData.cells = new Int32Array(cap);
-    chunkMeshes[k] = mesh; chunkCap[k] = cap;
+    chunkMeshes[k] = mesh;
     scene.add(mesh);
-  }
-  for (let j = 0; j < n; j++) {
-    const i = visBuf[j], x = i % W, z = ((i / W) | 0) % D, y = (i / WD) | 0;
-    tmpM.makeTranslation(x + 0.5, y + 0.5, z + 0.5);
-    mesh.setMatrixAt(j, tmpM);
-    tmpC.setHex(MAT_COLOR[g[i]]).multiplyScalar(0.9 + (mix(i * 31 + 7) % 11) / 100);
-    if (hiddenCell(x, y + 1, z)) tmpC.multiplyScalar(0.62);          // the cut surface reads as a slice
-    mesh.setColorAt(j, tmpC);
-    mesh.userData.cells[j] = i;
-  }
-  mesh.count = n;
-  mesh.instanceMatrix.needsUpdate = true;
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  } else { mesh.geometry.dispose(); mesh.geometry = geo; }
 }
+// The block a ray hit: step half a block back against the face normal from the hit point.
+const hitCell = h => [Math.floor(h.point.x - h.face.normal.x * 0.5), Math.floor(h.point.y - h.face.normal.y * 0.5), Math.floor(h.point.z - h.face.normal.z * 0.5)];
 // Is the unit in a hole or tunnel? Count neighbouring columns whose terrain (not trees) rises above its head.
 function terrainTop(x, z) {
   for (let y = H - 1; y >= 0; y--) { const v = S.g[idx(x, y, z)]; if (v && v !== WOOD && v !== LEAVES) return y + 1; }
@@ -542,6 +618,7 @@ function updateCut() {
 // Water: one transparent instanced mesh per chunk; each water cell is a box as tall as it is full.
 const waterGeo = new THREE.BoxGeometry(1, 1, 1);
 const waterMat = new THREE.MeshLambertMaterial({ color: 0x3f8fd8, transparent: true, opacity: 0.6, depthWrite: false });
+waterMat.onBeforeCompile = withSphereFog;
 const waterMeshes = [], waterCap = [];
 function waterShown(x, y, z, i) {
   const g = S.g, w = S.w;
@@ -777,6 +854,7 @@ const ladderTex = (() => {
   return t;
 })();
 const ladderMat = new THREE.MeshLambertMaterial({ map: ladderTex, alphaTest: 0.5, side: THREE.DoubleSide });
+ladderMat.onBeforeCompile = withSphereFog;
 let ladderMesh = null, ladderKey = '';
 function syncLadders() {
   const key = (S.lad ? S.lh + ':' + S.lad.size : 'none') + ':' + (cut ? cut.x + ',' + cut.y + ',' + cut.z : '');
@@ -1186,9 +1264,7 @@ function blockFromTap(cx, cy) {
   ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
   const h = raycaster.intersectObjects(chunkMeshes, false)[0];
-  if (!h) return null;
-  const i = h.object.userData.cells[h.instanceId];
-  return [i % W, (i / WD) | 0, ((i / W) | 0) % D];
+  return h ? hitCell(h) : null;
 }
 function tryDig(cx, cy) {
   const u = selUnit();
@@ -1270,8 +1346,8 @@ function cellFromTap(cx, cy) {
     if (h.object.userData.chunk) {
       if (isGhosted(h.point)) continue;                       // see-through blocks don't catch taps
       if (!h.face || h.face.normal.y < 0.5) return null;      // only the top of a block counts
-      const i = h.object.userData.cells[h.instanceId];
-      return [i % W, ((i / WD) | 0) + 1, ((i / W) | 0) % D];
+      const [x, y, z] = hitCell(h);
+      return [x, y + 1, z];
     }
   }
   return null;
@@ -2120,6 +2196,21 @@ canvas.addEventListener('pointercancel', () => { touches = Math.max(0, touches -
 /* ---------- Ghost blocks: is anything between the camera and the selected unit? ---------- */
 const ghostV = new THREE.Vector3(), bufSize = new THREE.Vector2();
 let ghostOn = 0;
+// Underground vision: fades in when the selected unit is in a hole or has ground over its head.
+let fogOn = 0;
+const BLACK = new THREE.Color(0x000000);
+function updateUnderground(dt) {
+  const x = Math.floor(walker.p.x), y = Math.floor(walker.p.y + 1e-4), z = Math.floor(walker.p.z);
+  const under = !commander && !lobbyOpen && inGrid(x, y, z) && (inHole(x, y, z) || terrainTop(x, z) > y + 1);
+  fogOn += ((under ? 1 : 0) - fogOn) * (1 - Math.pow(0.02, dt));
+  if (fogOn < 0.005) fogOn = 0;
+  sphereFog.uFog.value = fogOn;
+  sphereFog.uFogC.value.set(walker.p.x, walker.p.y + 0.6, walker.p.z);
+  scene.background.copy(skyColor).lerp(BLACK, fogOn);
+  scene.fog.color.copy(scene.background);
+}
+// Outside the visible sphere underground, units and flags are hidden too.
+const inDark = p => fogOn > 0.5 && p.distanceTo(sphereFog.uFogC.value) > sphereFog.uFogR.value;
 function updateGhost(dt) {
   let blocked = false;
   if (!fps && !commander) {
@@ -2203,11 +2294,12 @@ function frame(now) {
     camera.lookAt(camTarget);
   }
   updateGhost(dt);
+  updateUnderground(dt);
   unitGroups.forEach((g, k) => {
     const u = S.units[k];
     if (!u) return;
     const cx = k === sel ? Math.floor(walker.p.x) : u.x, cy = k === sel ? Math.floor(walker.p.y + 1e-4) : u.y, cz = k === sel ? Math.floor(walker.p.z) : u.z;
-    g.userData.sprite.visible = !(fps && !commander && k === sel) && !hiddenCell(cx, cy, cz);
+    g.userData.sprite.visible = !(fps && !commander && k === sel) && !hiddenCell(cx, cy, cz) && !inDark(g.position);
   });
   selRing.visible = !fps && !commander;
   if (lobbyOpen) rangeTiles.visible = destTile.visible = selRing.visible = false;   // a clean backdrop behind the lobby
@@ -2222,6 +2314,7 @@ function frame(now) {
     ring.visible = targets.includes(k) && g.userData.sprite.visible;
     if (ring.visible) ring.position.set(g.position.x, g.position.y + 0.05, g.position.z);
   });
+  S.buildings.forEach((b, k) => { const v = buildingViews[k]; if (v) v.visible = !hiddenCell(b.x, b.y, b.z) && !inDark(v.position); });
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
