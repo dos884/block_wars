@@ -31,6 +31,8 @@
 - `sim.html`: view/UI (Three.js r128 from cdnjs). Lobby at `/`; a match at `/?m=<id>`; Pass & play from the lobby.
   - Lobby: name (editable), Quick play, Play a friend (invite link; opening it asks "Join as Red / Just watch" — never auto-joins), Pass & play (random gold layout), Your games, notifications button, "Delete my player" (red, confirms; running games count as a quit).
   - Match: joystick bottom-left (walks inside the blue tiles, settles on a tile when released; on a ladder, stick up/down climbs); buttons in two equal rows of four (Attack, Dig, Capture, Build / Undo, Redo, Confirm, End turn); Units + Next above the joystick; ☰ Menu (Back to lobby, Quit game online / Restart in pass & play). Online, your view stays on your own army.
+  - Notifications: the first time you wait for your opponent online, a dialog explains why to allow them ("Yes, notify me" / "Not now", asks again after 3 days; a blocked variant says how to unblock). Websites can't pick the notification sound.
+  - Messages (`flash`) also show as a popup at the top while the lobby is open.
   - Debug (file:// or `?debug`): state hash, Commander free camera, `window.BW_DEBUG` (state, selected unit, `digBelow()`) for tests.
   - The knight is a 28×40 mounted sprite, two cubes tall.
   - Terrain rendering: one mesh per 16×16 chunk made of only the faces bordering open space (full-size cubes, no gaps), textured from a generated atlas (32×32 per material, faint darker border = lines between blocks). Taps find the block from hit point − normal/2. Layer cut-away (Auto + ▲▼) and the "ghost" dither around the selected unit still apply.
@@ -63,6 +65,7 @@ Sim details:
 - API: `POST /api/players`, `GET/POST/DELETE /api/me`, `POST /api/me/google`, `POST /api/me/push`, `POST|GET|DELETE /api/quick`, `POST /api/matches`, `POST /api/matches/:id/join|turns|quit|desync`, `GET /api/matches/:id?since=n&rev=r` (long-poll ≤25 s).
 - Matches table carries `rules`, `seed`, `verified`, `desync`, `quit`.
 - Analytics: `POST /api/events` stores small events from the page in the `events` table (at, player, type, data): `open` (page, mobile), `friend`, `hotseat_start`, `hotseat_turn`, `hotseat_win`, `kofi` (lobby/waiting). Batched every 10 s and when the page hides. No time tracking (he only wants counts). Read it with `sqlite3 -readonly`; answer pokes short.
+- Dev players: `players.dev = 1` are ours (his phone "Tiny Digger", his PC "Bold Llama", old test bots) and are left out of every count; pokes show real numbers with "(+N dev)". A browser gets tagged by opening `/?dev=<secret>` (secret = `DEV_KEY` in `/etc/block-wars.env`; never put it in git).
 - Google sign-in: needs `GOOGLE_CLIENT_ID=...` in `/etc/block-wars.env`, then `systemctl restart block-wars`; the button stays hidden until then. Not set up yet.
 - GitHub: pushes go through a repo-only deploy key (`~/.ssh/block_wars_deploy`).
 

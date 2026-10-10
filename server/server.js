@@ -31,6 +31,7 @@ const PORT = +process.env.PORT || 8787;
 const DB_PATH = process.env.DB || path.join(__dirname, 'dev.sqlite');
 const DATA_DIR = path.dirname(DB_PATH);
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const DEV_KEY = process.env.DEV_KEY || '';               // secret word that tags a browser's player as "dev" (not counted)
 const PUSH_CONTACT = process.env.PUSH_CONTACT || 'https://cubewars.io';
 const STATIC = process.env.STATIC;             // dev/tests only: also serve the game files (Caddy does it in production)
 const MAX_BODY = 512 * 1024;
@@ -86,6 +87,14 @@ if (!cols.includes('seed')) db.exec('ALTER TABLE matches ADD COLUMN seed INTEGER
 // and the players' browsers check each other's hashes. desync = the first turn a browser couldn't reproduce.
 if (!cols.includes('verified')) db.exec(`ALTER TABLE matches ADD COLUMN verified INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE matches ADD COLUMN desync INTEGER NOT NULL DEFAULT -1;`);
+
+// Dev players (the developer's devices, test bots) are left out of the counts. When the column is first added,
+// everyone who has played an online game so far is tagged: until now that was only us.
+if (!db.prepare('PRAGMA table_info(players)').all().some(c => c.name === 'dev')) {
+  db.exec(`ALTER TABLE players ADD COLUMN dev INTEGER NOT NULL DEFAULT 0;
+    UPDATE players SET dev = 1 WHERE id IN (SELECT p0 FROM matches WHERE turns > 0 UNION SELECT p1 FROM matches WHERE turns > 0)
+      OR name = 'Blue Tester' OR (created BETWEEN 1791511140000 AND 1791511320000);`);   // the live browser test, 2026-10-09 01:59-02:02 UTC
+}
 
 const q = {
   insertPlayer: db.prepare('INSERT INTO players (id, name, created, seen) VALUES (?, ?, ?, ?)'),
@@ -372,6 +381,11 @@ async function handle(req, res) {
       q.moveSubs.run(owner.id, me.id);
       q.moveSessions.run(owner.id, me.id);
       return send(res, 200, { id: owner.id, name: owner.name, switched: true });
+    }
+    if (route === 'POST me/dev') {                       // tag this browser's player as dev with the secret word
+      if (!DEV_KEY || body.key !== DEV_KEY) throw new Fail(403, 'wrong key');
+      db.prepare('UPDATE players SET dev = 1 WHERE id = ?').run(me.id);
+      return send(res, 200, { dev: true });
     }
     if (route === 'POST me/push') {
       const s = body.subscription;

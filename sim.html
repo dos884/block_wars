@@ -218,6 +218,14 @@ body.waiting #controls .leftpad, body.waiting #controls .cgrid{display:none}
 .msheet .btn{height:52px;font-size:17px}
 .msheet .btn[hidden]{display:none}
 .msheet .danger{background:var(--brk);color:#fff}
+#toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 14px);transform:translateX(-50%);z-index:20;
+  background:var(--ink);color:var(--sky);font-weight:800;font-size:15px;padding:10px 16px;border-radius:12px;max-width:min(92vw,420px);text-align:center;
+  box-shadow:0 4px 14px rgba(0,0,0,.25)}
+#toast[hidden]{display:none}
+#notifyView{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:11;display:flex;align-items:center;justify-content:center;padding:16px}
+#notifyView[hidden]{display:none}
+#notifyView .msheet [hidden]{display:none}
+#nText{font-size:14px;font-weight:600;text-align:center;line-height:1.45}
 #acctView{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:11;display:flex;align-items:center;justify-content:center;padding:16px}
 #acctView[hidden]{display:none}
 #acctView .msheet{gap:12px}
@@ -317,6 +325,18 @@ body.waiting #controls .leftpad, body.waiting #controls .cgrid{display:none}
   <div style="display:flex;gap:10px">
     <button class="btn" id="joinYes" style="padding:12px 20px;background:var(--cmd);color:#22303b">Join as Red</button>
     <button class="btn" id="joinNo" style="padding:12px 20px">Just watch</button>
+  </div>
+</div>
+
+<div id="toast" role="status" hidden></div>
+
+<div id="notifyView" hidden>
+  <div class="msheet" role="dialog" aria-modal="true" aria-labelledby="nTitle">
+    <div class="mtitle" id="nTitle">Want a ping when it's your turn?</div>
+    <div id="nText">Turns in Cube Wars can take minutes or hours, since your friend plays when they have time.
+      We'll send one notification when it's your move, and nothing else. No ads, no spam.</div>
+    <button class="btn" id="nYes" style="background:var(--cmd);color:#22303b">🔔 Yes, notify me</button>
+    <button class="btn" id="nNo">Not now</button>
   </div>
 </div>
 
@@ -1312,7 +1332,14 @@ function tryDig(cx, cy) {
   settle();
 }
 let flashTimer = 0;
-function flash(msg) { $('status').textContent = msg; flashTimer = performance.now() + 1200; }
+function flash(msg) {
+  $('status').textContent = msg; flashTimer = performance.now() + 1200;
+  if (lobbyOpen) {                                  // the HUD is hidden behind the lobby: show it as a popup there
+    const t = $('toast');
+    t.textContent = msg; t.hidden = false;
+    clearTimeout(t.timer); t.timer = setTimeout(() => { t.hidden = true; }, 3500);
+  }
+}
 
 /* ---------- Ghost-aware picking and tap snapping ---------- */
 const pickV = new THREE.Vector3(), pickS = new THREE.Vector2();
@@ -1498,7 +1525,7 @@ function refreshHud() {
     document.body.classList.toggle('waiting', waiting);
     if (waiting) { toggleUnits(false); toggleBuild(false); }
   }
-  if (waiting) $('waitName').textContent = 'Waiting for ' + (oppName() || 'your opponent') + '…';
+  if (waiting) { $('waitName').textContent = 'Waiting for ' + (oppName() || 'your opponent') + '…'; offerNotifications(); }
   if (!$('unitsPanel').hidden) renderUnitsPanel();
 }
 
@@ -1723,6 +1750,32 @@ async function enablePush(ask) {
     return true;
   } catch { return false; }
 }
+// The first time you wait for your opponent, explain why notifications help, once (again after 3 days if "Not now").
+let notifyOffered = false;
+function offerNotifications() {
+  if (notifyOffered || !pushable() || !config || !config.vapidKey) return;
+  notifyOffered = true;
+  const perm = Notification.permission, last = stored('bw:notifyAsked') || 0;
+  if (perm === 'granted' || Date.now() - last < 3 * 86400e3) return;
+  const blocked = perm === 'denied';
+  $('nTitle').textContent = blocked ? 'Notifications are blocked' : "Want a ping when it's your turn?";
+  $('nText').textContent = blocked
+    ? "This browser is set to block notifications from Cube Wars, so we can't tell you when it's your move. "
+      + 'To allow them: tap the icon left of the web address, then Permissions or Notifications, then Allow.'
+    : "Turns in Cube Wars can take minutes or hours, since your friend plays when they have time. "
+      + "We'll send one notification when it's your move, and nothing else. No ads, no spam.";
+  $('nYes').hidden = blocked;
+  $('nNo').textContent = blocked ? 'OK' : 'Not now';
+  $('notifyView').hidden = false;
+}
+$('nYes').addEventListener('click', async () => {
+  $('notifyView').hidden = true;
+  stored('bw:notifyAsked', Date.now());
+  const ok = await enablePush(true);
+  flash(ok ? "Notifications on: we'll tell you when it's your turn" : 'Notifications were not turned on');
+  updatePushUi();
+});
+$('nNo').addEventListener('click', () => { $('notifyView').hidden = true; stored('bw:notifyAsked', Date.now()); });
 function updatePushUi() {
   const b = $('lNotify'), note = $('lPushNote');
   const state = !pushable() ? 'none' : Notification.permission;
@@ -1963,6 +2016,12 @@ async function startOnline() {
     config = await api('GET', '/config');
     await signIn();
     shareTokenWithWorker();
+    const devKey = new URLSearchParams(location.search).get('dev');
+    if (devKey) {                                    // ?dev=<secret word>: this browser's player is ours, don't count it
+      try { await api('POST', '/me/dev', { key: devKey }); flash('This device is tagged as dev'); }
+      catch (e) { flash('Dev tag: ' + e.message); }
+      history.replaceState(null, '', location.pathname + (id ? '?m=' + id : ''));
+    }
     track('open', { page: id ? 'match' : 'lobby', mobile: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches) });
     flushEvents();
     if (pushable() && Notification.permission === 'granted') enablePush(false);   // keep the subscription fresh
