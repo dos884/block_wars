@@ -15,6 +15,7 @@
 - Don't work on the "verified" (premium) server mode now (see Decisions). Its code stays untouched and untested.
 - Test commands run without approval prompts: `npm test`, `node test/...` (allowed in `/root/.claude/settings.json`). Run them as plain commands; extra pipes/redirects make them prompt again.
 - If he denies a command, stop and ask; don't retry it in another form.
+- The live database (`/var/lib/block_wars/bw.sqlite`): look at it ONLY read-only (`sqlite3 -readonly … "SELECT …"`). WAL mode lets that run beside the server without blocking. Never write to it without his OK; if a write is needed, back up first and keep it to one quick statement.
 
 ## The game
 - Mobile-first (Android), web app, turn-based. "Advance Wars × Minecraft", no redstone. One obvious, cute base game first; modders later.
@@ -61,6 +62,7 @@ Sim details:
 - https://cubewars.io via Caddy (static from `/var/www/block_wars`, `/api/*` → 127.0.0.1:8787). systemd `block-wars` (user `blockwars`, DB `/var/lib/block_wars/bw.sqlite`, VAPID key `vapid.json` next to it). Nightly backup 04:00 → `/var/backups/block_wars` (14 days, same disk only).
 - API: `POST /api/players`, `GET/POST/DELETE /api/me`, `POST /api/me/google`, `POST /api/me/push`, `POST|GET|DELETE /api/quick`, `POST /api/matches`, `POST /api/matches/:id/join|turns|quit|desync`, `GET /api/matches/:id?since=n&rev=r` (long-poll ≤25 s).
 - Matches table carries `rules`, `seed`, `verified`, `desync`, `quit`.
+- Analytics: `POST /api/events` stores small events from the page in the `events` table (at, player, type, data): `open` (page, mobile), `friend`, `hotseat_start`, `hotseat_turn`, `hotseat_win`, `kofi` (lobby/waiting). Batched every 10 s and when the page hides. No time tracking (he only wants counts). Read it with `sqlite3 -readonly`; answer pokes short.
 - Google sign-in: needs `GOOGLE_CLIENT_ID=...` in `/etc/block-wars.env`, then `systemctl restart block-wars`; the button stays hidden until then. Not set up yet.
 - GitHub: pushes go through a repo-only deploy key (`~/.ssh/block_wars_deploy`).
 

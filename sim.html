@@ -290,7 +290,7 @@ body.waiting #controls .leftpad, body.waiting #controls .cgrid{display:none}
     <div class="lh">Your games</div>
     <div id="lGames"><div class="lempty">No games yet.</div></div>
     <div class="lfoot">
-      <a class="btn kofi lkofi" href="https://ko-fi.com/shmooti" target="_blank" rel="noopener">☕ Support Cube Wars</a>
+      <a class="btn kofi lkofi" id="kofiLobby" href="https://ko-fi.com/shmooti" target="_blank" rel="noopener">☕ Support Cube Wars</a>
       <button class="btn" id="lNotify" hidden>🔔 Tell me when it's my turn</button>
       <div id="lPushNote" hidden></div>
       <div id="gsi"></div>
@@ -353,7 +353,7 @@ body.waiting #controls .leftpad, body.waiting #controls .cgrid{display:none}
   <div id="waitPanel" role="status">
     <div id="waitName">Waiting for your opponent…</div>
     <div class="sub">Enjoying Cube Wars? A coffee helps keep it going.</div>
-    <a class="btn kofi bigkofi" href="https://ko-fi.com/shmooti" target="_blank" rel="noopener">☕ Support on Ko-fi</a>
+    <a class="btn kofi bigkofi" id="kofiWait" href="https://ko-fi.com/shmooti" target="_blank" rel="noopener">☕ Support on Ko-fi</a>
   </div>
   <div class="leftpad">
     <div id="unitsPanel" hidden></div>
@@ -1474,6 +1474,7 @@ function refreshHud() {
   $('buildBtn').disabled = falling || !mine || !TYPES.some(t => canBuild(S, t));
   if (!$('buildPanel').hidden) renderBuildPanel();
   const won = winnerNow();
+  if (!NET.id && won >= 0 && !hotseatWon) { hotseatWon = true; track('hotseat_win', { team: won, turn: S.turn }); }
   $('winView').hidden = won < 0 && NET.desync < 0;
   if (NET.desync >= 0) {                         // a turn played differently on the two devices: no fair way to continue
     $('winText').textContent = 'Out of sync';
@@ -1621,6 +1622,7 @@ function act(a) {
   } else if (a === 'endturn') {
     if (falling) return;                     // wait for the current action to finish resolving
     if (NET.id) { submitTurn(); return; }    // online: the server checks the turn first
+    track('hotseat_turn', { turn: S.turn, team: S.team });
     endTurn(S);
     turnStarted();
     if (S.wnext.length) settle();            // the same steps as the sim's finishTurn(), animated
@@ -1690,6 +1692,17 @@ async function signIn() {
   Object.assign(me, await api('GET', '/me'));
   return me;
 }
+// Analytics: queue small events and send them in batches to our own server (never blocks or breaks the game).
+const evQueue = [];
+function track(t, d) { if (onWeb && !EMBEDDED) evQueue.push(d === undefined ? { t } : { t, d }); }
+function flushEvents() {
+  if (!evQueue.length || !me.token) return;
+  const events = evQueue.splice(0, 50);
+  fetch(API_BASE + '/api/events', { method: 'POST', keepalive: true,
+    headers: { 'content-type': 'application/json', authorization: 'Bearer ' + me.token }, body: JSON.stringify({ events }) }).catch(() => {});
+}
+setInterval(flushEvents, 10000);
+document.addEventListener('visibilitychange', () => { if (document.hidden) flushEvents(); });
 function shareTokenWithWorker() {
   if (!('caches' in window) || !me.token) return;
   caches.open('bw').then(c => c.put('/__token', new Response(me.token))).catch(() => {});
@@ -1719,7 +1732,7 @@ function updatePushUi() {
 }
 
 /* ---------- Lobby ---------- */
-let lobbyOpen = false, searching = false;
+let lobbyOpen = false, searching = false, hotseatWon = false;
 function openLobby() {
   lobbyOpen = true;
   document.body.classList.add('lobby');
@@ -1950,14 +1963,18 @@ async function startOnline() {
     config = await api('GET', '/config');
     await signIn();
     shareTokenWithWorker();
+    track('open', { page: id ? 'match' : 'lobby', mobile: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches) });
+    flushEvents();
     if (pushable() && Notification.permission === 'granted') enablePush(false);   // keep the subscription fresh
   } catch (e) { flash("Can't reach the server: " + e.message); return; }
   if (id) openMatch(id); else refreshLobby();
 }
 $('lQuick').addEventListener('click', quickPlay);
 $('lCancel').addEventListener('click', async () => { setSearching(false); try { await api('DELETE', '/quick'); } catch { /* it expires anyway */ } });
-$('lFriend').addEventListener('click', playFriend);
-$('lLocal').addEventListener('click', () => { newGame(undefined, randomSeed()); closeLobby(); });
+$('kofiLobby').addEventListener('click', () => { track('kofi', { where: 'lobby' }); flushEvents(); });
+$('kofiWait').addEventListener('click', () => { track('kofi', { where: 'waiting' }); flushEvents(); });
+$('lFriend').addEventListener('click', () => { track('friend'); flushEvents(); playFriend(); });
+$('lLocal').addEventListener('click', () => { newGame(undefined, randomSeed()); closeLobby(); track('hotseat_start'); hotseatWon = false; });
 $('lNotify').addEventListener('click', async () => { if (!await enablePush(true)) flash('Notifications are not available here'); updatePushUi(); });
 $('lName').addEventListener('change', rename);
 $('lName').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
@@ -2000,7 +2017,7 @@ $('menuBtn').addEventListener('click', openMenu);
 $('mClose').addEventListener('click', closeMenu);
 $('menuView').addEventListener('click', e => { if (e.target === $('menuView')) closeMenu(); });
 $('mLobby').addEventListener('click', () => { closeMenu(); if (NET.id) location.href = HOME; else openLobby(); });
-$('mRestart').addEventListener('click', () => { closeMenu(); $('reset').dispatchEvent(new PointerEvent('pointerdown')); });
+$('mRestart').addEventListener('click', () => { closeMenu(); $('reset').dispatchEvent(new PointerEvent('pointerdown')); track('hotseat_start', { restart: true }); hotseatWon = false; });
 $('mQuit').addEventListener('click', () => {       // step 2: say what quitting means, then confirm
   const opp = oppName();
   $('mTitle').textContent = NET.players[1] ? 'Quit this game? ' + opp + ' wins.' : 'Cancel this game? Nobody has joined yet.';

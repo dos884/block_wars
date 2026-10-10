@@ -64,6 +64,9 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS queue (
     player TEXT PRIMARY KEY, created INTEGER NOT NULL, matched TEXT
   );
+  CREATE TABLE IF NOT EXISTS events (           -- light analytics: what players do outside online matches
+    at INTEGER NOT NULL, player TEXT, type TEXT NOT NULL, data TEXT
+  );
   CREATE TABLE IF NOT EXISTS pushsubs (
     endpoint TEXT PRIMARY KEY, player TEXT NOT NULL, sub TEXT NOT NULL, created INTEGER NOT NULL
   );
@@ -122,6 +125,7 @@ const q = {
   addSub: db.prepare('INSERT OR REPLACE INTO pushsubs (endpoint, player, sub, created) VALUES (?, ?, ?, ?)'),
   subsOf: db.prepare('SELECT * FROM pushsubs WHERE player = ?'),
   dropSub: db.prepare('DELETE FROM pushsubs WHERE endpoint = ?'),
+  insertEvent: db.prepare('INSERT INTO events (at, player, type, data) VALUES (?, ?, ?, ?)'),
   moveSubs: db.prepare('UPDATE pushsubs SET player = ? WHERE player = ?'),
 };
 
@@ -239,6 +243,8 @@ function allow(kind, ip, max) {
 }
 setInterval(() => { hits.clear(); q.expireQueue.run(Date.now() - SEARCH_FOR); }, 3600e3).unref();
 
+const EVENT_TYPES = new Set(['open', 'friend', 'hotseat_start', 'hotseat_turn', 'hotseat_win', 'kofi']);
+
 /* ---------- HTTP helpers ---------- */
 class Fail extends Error { constructor(code, msg) { super(msg); this.code = code; } }
 function send(res, code, obj) {
@@ -303,6 +309,23 @@ async function handle(req, res) {
   const me = whoIs(req);
 
   if (route === 'GET config') return send(res, 200, { googleClientId: GOOGLE_CLIENT_ID || null, vapidKey: vapid.publicKey });
+
+  // Analytics: a small batch of events from the page. Unknown types are dropped; it never fails the page.
+  if (route === 'POST events') {
+    if (!allow('events', ip, 2000)) return send(res, 200, { ok: false });
+    const body = await readJson(req);
+    const list = Array.isArray(body.events) ? body.events.slice(0, 50) : [];
+    db.exec('BEGIN');
+    try {
+      for (const e of list) {
+        if (!e || !EVENT_TYPES.has(e.t)) continue;
+        const data = e.d === undefined ? null : JSON.stringify(e.d).slice(0, 300);
+        q.insertEvent.run(now, me ? me.id : null, e.t, data);
+      }
+      db.exec('COMMIT');
+    } catch (err) { db.exec('ROLLBACK'); throw err; }
+    return send(res, 200, { ok: true });
+  }
 
   if (route === 'POST players') {
     if (!allow('player', ip, 60)) throw new Fail(429, 'too many new players from here, try again later');
