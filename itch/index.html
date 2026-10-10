@@ -1,0 +1,2349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Cube Wars</title>
+<meta name="theme-color" content="#bcd6e8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --sky:#bcd6e8; --ink:#22303b; --btn:#f7fafc; --panel:rgba(247,250,252,.82);
+  --muted:#5a6b78; --cmd:#ff7a1a; --brk:#e0453a;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --sky:#17212b; --ink:#e6edf3; --btn:#26323d; --panel:rgba(38,50,61,.82); --muted:#9fb0bd;
+  }
+}
+:root[data-theme="dark"]{
+  --sky:#17212b; --ink:#e6edf3; --btn:#26323d; --panel:rgba(38,50,61,.82); --muted:#9fb0bd;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{
+  height:100%;margin:0;overflow:hidden;background:var(--sky);color:var(--ink);
+  font-family:"Nunito",ui-rounded,system-ui,-apple-system,"Segoe UI",sans-serif;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+
+#hud{
+  position:fixed;top:0;left:0;right:0;pointer-events:none;
+  padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 0;
+  display:flex;justify-content:space-between;align-items:flex-start;gap:8px;
+}
+.chip{
+  pointer-events:auto;background:var(--panel);border:2px solid var(--ink);border-radius:12px;
+  padding:6px 10px;font-size:13px;line-height:1.35;font-weight:600;
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+}
+.chip b{font-weight:800}
+.chip .sub{color:var(--muted)}
+#status{color:var(--brk);font-weight:800;min-height:1.35em}
+
+#controls{
+  position:fixed;left:0;right:0;bottom:0;pointer-events:none;
+  padding:0 12px calc(env(safe-area-inset-bottom,0px) + 12px);
+  display:flex;justify-content:space-between;align-items:flex-end;gap:10px;
+}
+.btn{
+  pointer-events:auto;appearance:none;-webkit-appearance:none;
+  border:2px solid var(--ink);background:var(--btn);color:var(--ink);
+  font:inherit;font-weight:800;font-size:15px;border-radius:14px;
+  box-shadow:0 4px 0 var(--ink);touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+  cursor:pointer;padding:0;transition:transform .05s,box-shadow .05s;
+}
+.btn.pressed{transform:translateY(4px);box-shadow:0 0 0 var(--ink)}
+.btn:focus-visible{outline:3px solid var(--cmd);outline-offset:2px}
+.btn:disabled{opacity:.45}
+
+.pad{display:flex;flex-direction:column;align-items:center;gap:10px}
+.dpad{display:grid;grid-template-columns:44px 80px 44px;grid-template-rows:44px 82px 44px;gap:5px}
+.dpad .btn{font-size:20px}
+.dpad [data-act="w"]{grid-column:2;grid-row:1}
+.dpad [data-act="a"]{grid-column:1;grid-row:2}
+.dpad [data-act="d"]{grid-column:3;grid-row:2}
+.dpad [data-act="s"]{grid-column:2;grid-row:3}
+.dpad .vstack{grid-column:2;grid-row:2;display:grid;grid-template-rows:1fr 1fr;gap:4px}
+.dpad .vt{font-size:14px;border-radius:10px;box-shadow:0 3px 0 var(--ink)}
+.dpad .vt.pressed{transform:translateY(3px);box-shadow:0 0 0 var(--ink)}
+.dpad .vt.on{background:var(--cmd);color:#22303b}
+
+.acts{display:flex;flex-direction:column;align-items:stretch;gap:10px;width:min(46vw,190px)}
+.swatches{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.sw{height:40px;border-radius:10px}
+.sw.sel{outline:3px solid var(--cmd);outline-offset:2px}
+.aim{height:44px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.big{height:60px;font-size:16px}
+.place{background:var(--cmd);color:#22303b}
+.break{background:var(--brk);color:#fff}
+
+@media (prefers-reduced-motion:reduce){.btn{transition:none}}
+:root{--sel:#ff7a1a}
+.chip.left{position:relative}
+.ubtn{padding:4px 10px;font-size:14px;box-shadow:0 3px 0 var(--ink);display:inline-flex;align-items:center;gap:6px;margin-bottom:4px}
+.dot{width:12px;height:12px;border-radius:50%;border:2px solid var(--ink);display:inline-block;flex:none}
+#unitsPanel{position:absolute;top:calc(100% + 6px);left:0;display:flex;flex-direction:column;gap:6px;min-width:180px;z-index:5}
+#unitsPanel[hidden]{display:none}
+.urow{display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:15px;box-shadow:0 3px 0 var(--ink);text-align:left;justify-content:flex-start}
+.urow .sub{margin-left:auto;font-size:12px}
+.urow.cur{outline:3px solid var(--cmd);outline-offset:1px}
+#controls .acts{flex:1;min-width:0;max-width:230px;align-items:stretch;margin-left:auto}
+.confirm{height:60px;min-width:0;font-size:18px;background:var(--cmd);color:#22303b}
+.dig{height:46px;min-width:0;font-size:15px}
+#layers{position:fixed;right:calc(12px + env(safe-area-inset-right,0px));top:30%;display:flex;flex-direction:column;align-items:center;gap:6px;z-index:4}
+.lb{width:54px;height:46px;font-size:18px}
+.lb.auto{font-size:13px}
+.lb.auto.on{background:var(--cmd);color:#22303b}
+#layerTxt{font-size:12px;padding:4px 6px;text-align:center;min-width:54px;font-weight:800}
+.unitswrap{position:relative;pointer-events:auto;align-self:flex-end;display:flex;flex-direction:column;align-items:stretch;gap:8px;width:112px;flex:none}
+.nextbtn{height:48px;min-width:0;font-size:16px;padding:0 10px}
+.unitsbig{height:56px;min-width:0;font-size:17px;padding:0 10px}
+#unitsPanel{top:auto;bottom:calc(100% + 10px)}
+#buildPanel{position:absolute;bottom:calc(100% + 10px);left:0;display:flex;flex-direction:column;gap:6px;min-width:210px;z-index:5}
+#buildPanel[hidden]{display:none}
+#winView{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:8;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#fff;text-align:center;padding:16px}
+#winView[hidden]{display:none}
+#winText{font-size:34px;font-weight:800}
+.dig.on{background:var(--brk);color:#fff}
+.endturn{height:42px;min-width:0;font-size:15px}
+.undorow{display:flex;align-items:center;gap:6px}
+.undorow .btn{height:40px;flex:1;font-size:13px;min-width:0;padding:0 4px;white-space:nowrap}
+#acount{font-size:11px;font-weight:800;flex:none;text-align:center;padding:4px 5px;white-space:nowrap}
+.stick{position:fixed;bottom:calc(22px + env(safe-area-inset-bottom,0px));width:140px;height:140px;border-radius:50%;
+  border:2px solid var(--ink);background:var(--panel);touch-action:none;z-index:6;opacity:.6}
+.stick.live{opacity:.9}
+.stick .knob{position:absolute;width:58px;height:58px;border-radius:50%;background:var(--cmd);border:2px solid var(--ink);left:39px;top:39px;pointer-events:none}
+#stickMove{left:calc(22px + env(safe-area-inset-left,0px))}
+#stickLook{right:calc(22px + env(safe-area-inset-right,0px))}
+#cmdExit{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);right:12px;padding:6px 12px;font-size:14px;z-index:6}
+body.commander #hud, body.commander #controls, body.commander #layers{display:none}
+body:not(.commander) .cmdui{display:none}
+#shotBtn{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);left:12px;padding:6px 14px;font-size:14px;z-index:6}
+#shotFlash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:9;transition:opacity .25s}
+#shotView{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px;color:#fff;font-weight:800;text-align:center}
+#shotView[hidden]{display:none}
+#shareView{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px;color:#fff;font-weight:800;text-align:center}
+#shareView[hidden]{display:none}
+#shareLink{width:min(92vw,420px);font:inherit;font-size:15px;padding:10px;border-radius:10px;border:2px solid #fff;text-align:center}
+#netRow{display:flex;align-items:center;gap:6px;margin-top:2px;flex-wrap:wrap}
+body.lobby #hud, body.lobby #controls, body.lobby #layers{display:none}
+#lobby{position:fixed;inset:0;z-index:7;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  display:flex;justify-content:center;align-items:flex-start;
+  padding:calc(env(safe-area-inset-top,0px) + 24px) 16px calc(env(safe-area-inset-bottom,0px) + 24px);
+  background:linear-gradient(to bottom, color-mix(in srgb, var(--sky) 72%, transparent), color-mix(in srgb, var(--sky) 45%, transparent) 40%, color-mix(in srgb, var(--sky) 85%, transparent))}
+#lobby[hidden]{display:none}
+.lcard{width:100%;max-width:420px;display:flex;flex-direction:column;gap:14px}
+.ltitle{text-align:center;margin:8px 0 0}
+.ltitle h1{margin:0;font-size:44px;font-weight:800;letter-spacing:-.5px;line-height:1;
+  text-shadow:0 3px 0 var(--sky),0 -2px 0 var(--sky),2px 0 0 var(--sky),-2px 0 0 var(--sky)}
+.ltitle .tag{color:var(--ink);font-size:14px;font-weight:700;margin-top:6px}
+.lpanel{background:var(--panel);border:2px solid var(--ink);border-radius:16px;padding:12px;
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);display:flex;flex-direction:column;gap:10px}
+.lnamerow{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted)}
+#lName{flex:1;min-width:0;font:inherit;font-size:17px;font-weight:800;color:var(--ink);background:transparent;
+  border:none;border-bottom:2px dashed var(--muted);padding:4px 2px;border-radius:0}
+#lName:focus{outline:none;border-bottom-color:var(--cmd)}
+.lbig{height:64px;font-size:20px;background:var(--cmd);color:#22303b}
+.lrow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.lrow .btn{height:64px;font-size:17px}
+#lFriend{background:var(--cmd);color:#22303b}
+#lQuick[hidden]{display:none}
+#lSearch{text-align:center;font-weight:800;display:flex;flex-direction:column;gap:6px;align-items:center}
+#lSearch[hidden]{display:none}
+#lSearch .sub{font-weight:600;font-size:13px;color:var(--muted)}
+.spin{display:inline-block;width:14px;height:14px;border:3px solid var(--muted);border-top-color:var(--cmd);border-radius:50%;
+  animation:spin .8s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+.lh{margin:2px 2px -4px;font-size:13px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+#lGames{display:flex;flex-direction:column;gap:8px}
+.game{display:flex;align-items:center;gap:10px;padding:10px 12px;text-align:left;font-size:15px;box-shadow:0 3px 0 var(--ink);width:100%}
+.game .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.game .st{font-size:13px;font-weight:800;padding:3px 8px;border-radius:999px;border:2px solid var(--ink);white-space:nowrap}
+.game .st.turn{background:var(--cmd);color:#22303b}
+.game.over{opacity:.6}
+.lempty{color:var(--muted);font-size:14px;text-align:center;padding:6px}
+.lfoot{display:flex;flex-direction:column;gap:8px;align-items:center;font-size:13px;color:var(--muted);text-align:center}
+.lfoot .btn{padding:8px 14px;font-size:14px;box-shadow:0 3px 0 var(--ink)}
+.lfoot [hidden]{display:none}
+#hashBox[hidden]{display:none}
+#netRow[hidden]{display:none}
+#reset[hidden],#winUndo[hidden],#menuBtn[hidden],#cmdBtn[hidden]{display:none!important}
+/* Bottom controls: a move joystick on the left, equal-size buttons on the right (4 columns, 2 rows). */
+#controls{align-items:flex-end;gap:12px}
+.leftpad{position:relative;pointer-events:auto;display:flex;flex-direction:column;gap:10px;align-items:center;flex:none}
+.selrow{display:grid;grid-template-columns:1fr 1fr;gap:6px;width:128px}
+.cgrid{position:relative;pointer-events:auto;flex:1;min-width:0;max-width:340px;margin-left:auto;
+  display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:54px;gap:6px}
+.cbtn{min-width:0;height:auto;padding:0 2px;font-size:13px;line-height:1.1;border-radius:12px;box-shadow:0 3px 0 var(--ink)}
+.cbtn.pressed{transform:translateY(3px);box-shadow:0 0 0 var(--ink)}
+.selrow .cbtn{height:40px}
+.cbtn.confirm{height:auto;font-size:13px}
+#acount{display:block;font-size:10px;font-weight:800;color:var(--muted);margin-top:1px}
+#buildPanel{left:auto;right:0}
+.joy{position:relative;width:128px;height:128px;border-radius:50%;border:2px solid var(--ink);background:var(--panel);
+  touch-action:none;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);transition:opacity .15s}
+.joy .knob{position:absolute;width:52px;height:52px;border-radius:50%;background:var(--cmd);border:2px solid var(--ink);left:36px;top:36px;pointer-events:none}
+.joy.off{opacity:.35}
+.joy.live{background:color-mix(in srgb, var(--panel) 70%, var(--cmd))}
+@media (max-width:360px){.cbtn{font-size:12px}.joy{width:112px;height:112px}.joy .knob{left:28px;top:28px}.selrow{width:112px}}
+#joinView{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px;color:#fff;font-weight:800;text-align:center}
+#joinView[hidden]{display:none}
+#menuView{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10;display:flex;align-items:center;justify-content:center;padding:16px}
+#menuView[hidden]{display:none}
+.msheet{background:var(--sky);border:2px solid var(--ink);border-radius:18px;padding:16px;width:100%;max-width:340px;display:flex;flex-direction:column;gap:10px}
+.msheet .mtitle{font-weight:800;font-size:18px;text-align:center;margin-bottom:2px}
+.msheet .btn{height:52px;font-size:17px}
+.msheet .btn[hidden]{display:none}
+.msheet .danger{background:var(--brk);color:#fff}
+#acctView{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:11;display:flex;align-items:center;justify-content:center;padding:16px}
+#acctView[hidden]{display:none}
+#acctView .msheet{gap:12px}
+#acctView .msheet [hidden]{display:none}
+#aText{font-size:14px;font-weight:600;text-align:center;line-height:1.4}
+.lacct{display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:center}
+.linkbtn{appearance:none;background:none;border:none;font:inherit;font-size:13px;font-weight:700;color:var(--muted);
+  text-decoration:underline;text-underline-offset:3px;padding:4px;cursor:pointer}
+.linkbtn.warn{color:var(--brk)}
+#joinText{font-size:22px;max-width:360px}
+#shotView img{max-width:100%;max-height:72vh;border-radius:10px;border:2px solid #fff}
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="3D world view. Tap a blue tile to move the selected unit. Swipe to rotate the camera, pinch to zoom."></canvas>
+
+<div id="hud">
+  <div class="chip left">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px"><span class="dot" id="udot"></span><b id="uname">Unit</b></div>
+    <div class="sub"><span id="ustate">Ready</span> · <span id="pos"></span></div>
+    <div class="sub">Turn <b id="turn">1</b> · Wood <b id="invwood">0</b></div>
+    <div class="sub">Gold <b id="gold">0</b> <span id="income"></span></div>
+    <div id="netRow" hidden><span class="sub" id="netLine"></span><button class="btn" id="shareBtn" style="padding:2px 8px;font-size:12px;box-shadow:0 2px 0 var(--ink)" hidden>Invite</button></div>
+    <div id="status"></div>
+  </div>
+  <div class="chip" style="text-align:right">
+    <div id="hashBox" hidden><div class="sub">State hash</div><div><b id="hash">--------</b></div></div>
+    <button class="btn" id="menuBtn" style="padding:4px 10px;font-size:13px;box-shadow:0 3px 0 var(--ink);display:block;margin-left:auto" hidden>☰ Menu</button>
+    <button class="btn" id="reset" style="margin-top:6px;padding:4px 10px;font-size:13px;box-shadow:0 3px 0 var(--ink);display:block;margin-left:auto">Reset</button>
+    <button class="btn" data-act="view" aria-pressed="false" style="margin-top:6px;padding:4px 10px;font-size:13px;box-shadow:0 3px 0 var(--ink);display:block;margin-left:auto">1st person</button>
+    <button class="btn" id="cmdBtn" data-act="commander" style="margin-top:6px;padding:4px 10px;font-size:13px;box-shadow:0 3px 0 var(--ink);display:block;margin-left:auto">Commander</button>
+  </div>
+</div>
+
+
+<div id="layers" role="group" aria-label="View layer">
+  <button class="btn lb" data-act="layerUp" aria-label="Show one layer higher">▲</button>
+  <div id="layerTxt" class="chip">All</div>
+  <button class="btn lb" data-act="layerDown" aria-label="Show one layer lower">▼</button>
+  <button class="btn lb auto on" data-act="layerAuto" aria-pressed="true">Auto</button>
+</div>
+
+<div class="cmdui stick" id="stickMove" role="application" aria-label="Fly: drag to move"><div class="knob"></div></div>
+<div class="cmdui stick" id="stickLook" role="application" aria-label="Look: drag to turn"><div class="knob"></div></div>
+<button class="cmdui btn" id="cmdExit" data-act="commander">Exit commander</button>
+<button class="cmdui btn" id="shotBtn" aria-label="Take a screenshot">📷 Screenshot</button>
+<div id="shotFlash" aria-hidden="true"></div>
+<div id="shotView" hidden>
+  <div>Long-press the picture to save it</div>
+  <img id="shotImg" alt="Screenshot of the game view">
+  <button class="btn" id="shotClose" style="padding:8px 18px;color:var(--ink)">Close</button>
+</div>
+
+<div id="lobby" hidden>
+  <div class="lcard">
+    <div class="ltitle"><h1 id="gameName">Cube Wars</h1><div class="tag">Turn-based battles on ground you can dig.</div></div>
+    <div class="lpanel">
+      <label class="lnamerow">You are <input id="lName" maxlength="20" autocomplete="nickname" spellcheck="false" aria-label="Your name"> ✎</label>
+      <button class="btn lbig" id="lQuick" hidden>Quick play</button>
+      <div id="lSearch" hidden>
+        <div><span class="spin" aria-hidden="true"></span>Looking for an opponent…</div>
+        <div class="sub">It's turn-based: you can close the app. We'll tell you when the game starts.</div>
+        <button class="btn" id="lCancel" style="padding:6px 14px;font-size:14px;box-shadow:0 3px 0 var(--ink)">Stop looking</button>
+      </div>
+      <div class="lrow">
+        <button class="btn" id="lFriend">Play a friend</button>
+        <button class="btn" id="lLocal">Play yourself</button>
+      </div>
+    </div>
+    <div class="lh">Your games</div>
+    <div id="lGames"><div class="lempty">No games yet.</div></div>
+    <div class="lfoot">
+      <button class="btn" id="lNotify" hidden>🔔 Tell me when it's my turn</button>
+      <div id="lPushNote" hidden></div>
+      <div id="gsi"></div>
+      <div id="lGoogle" hidden></div>
+      <div class="lacct">
+        <button class="linkbtn warn" id="lDelete">Delete my player</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="shareView" hidden>
+  <div>Send this link to a friend.<br>They play Red. You play Blue and can make your first move now.</div>
+  <input id="shareLink" readonly aria-label="Match link">
+  <div style="display:flex;gap:10px">
+    <button class="btn" id="shareGo" style="padding:10px 18px;background:var(--cmd);color:#22303b">Share link</button>
+    <button class="btn" id="shareClose" style="padding:10px 18px">Close</button>
+  </div>
+</div>
+
+<div id="joinView" hidden>
+  <div id="joinText">You're invited to a game</div>
+  <div class="sub" style="color:#fff;font-weight:600">You'll play Red. Blue moves first.</div>
+  <div style="display:flex;gap:10px">
+    <button class="btn" id="joinYes" style="padding:12px 20px;background:var(--cmd);color:#22303b">Join as Red</button>
+    <button class="btn" id="joinNo" style="padding:12px 20px">Just watch</button>
+  </div>
+</div>
+
+<div id="acctView" hidden>
+  <div class="msheet" role="dialog" aria-modal="true" aria-labelledby="aTitle">
+    <div class="mtitle" id="aTitle">Your player</div>
+    <div id="aText"></div>
+    <button class="btn" id="aMain">OK</button>
+    <button class="btn" id="aAlt">Cancel</button>
+  </div>
+</div>
+
+<div id="menuView" hidden>
+  <div class="msheet" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <div class="mtitle" id="mTitle">Menu</div>
+    <button class="btn" id="mLobby">Back to lobby</button>
+    <button class="btn" id="mRestart" hidden>Restart this game</button>
+    <button class="btn danger" id="mQuit" hidden>Quit game</button>
+    <button class="btn danger" id="mQuitYes" hidden>Yes, quit</button>
+    <button class="btn" id="mClose">Keep playing</button>
+  </div>
+</div>
+
+<div id="winView" hidden>
+  <div id="winText">Blue wins!</div>
+  <div class="sub" id="winSub" style="color:#fff">The enemy base has been captured.</div>
+  <div style="display:flex;gap:10px">
+    <button class="btn" id="winUndo" style="padding:10px 18px">↶ Undo</button>
+    <button class="btn" id="winAgain" style="padding:10px 18px;background:var(--cmd);color:#22303b">Play again</button>
+  </div>
+</div>
+
+<div id="controls">
+  <div class="leftpad">
+    <div id="unitsPanel" hidden></div>
+    <div class="selrow">
+      <button class="btn cbtn" id="unitsBtn" aria-haspopup="true" aria-expanded="false" aria-controls="unitsPanel">Units ▴</button>
+      <button class="btn cbtn" data-act="next" aria-label="Select the next unit that hasn't moved">Next ▸</button>
+    </div>
+    <div id="joy" class="joy" role="application" aria-label="Move: drag to walk the selected unit, let go to stop on a tile"><div class="knob"></div></div>
+  </div>
+  <div class="cgrid">
+    <div id="buildPanel" hidden></div>
+    <button class="btn cbtn dig" data-act="attack" aria-pressed="false">Attack</button>
+    <button class="btn cbtn dig" data-act="dig" aria-pressed="false">Dig</button>
+    <button class="btn cbtn" data-act="capture">Capture</button>
+    <button class="btn cbtn" id="buildBtn" aria-haspopup="true" aria-expanded="false" aria-controls="buildPanel">Build ▴</button>
+    <button class="btn cbtn" data-act="undo" aria-label="Undo last action">↶ Undo<span id="acount">0</span></button>
+    <button class="btn cbtn" data-act="redo" aria-label="Redo">Redo ↷</button>
+    <button class="btn cbtn confirm" data-act="confirm">Confirm</button>
+    <button class="btn cbtn" data-act="endturn">End turn</button>
+  </div>
+</div>
+
+<script>window.CUBE_WARS = { api: 'https://cubewars.io', site: 'https://cubewars.io/' };</script>
+<script src="three.min.js"></script>
+<script src="sim-core.js"></script>
+<script>
+(() => {
+'use strict';
+
+/* =========================================================
+   SIM — lives in sim-core.js (shared with the server). The view only reads it and calls its actions.
+   ========================================================= */
+const {
+  W, D, H, WD, AIR, GRASS, DIRT, STONE, WOOD, BEDROCK, LEAVES, GOLD, WFULL, MAX_HP, CAPTURE_PTS, INCOME,
+  TEAM_NAMES, TEAM_COLORS, TYPES, UNIT_TYPES,
+  idx, inGrid, mix, unitName, cellKey, newState, stateHash,
+  stepTo, stepsFrom, moveOf, moveRange, moveUnit, canDig, digTool, dig, canAttack, attack, hasLadder, climbsLadders,
+  canCapture, capture, canBuild, buildUnit, incomeOf,
+  beginAction, endAction, undo, redo, endTurn, gravityStep, waterStep, turnGroups, replayTurn,
+} = BlockSim;
+
+/* =========================================================
+   VIEW — Three.js. Reads the sim; walking is a visual that commits snapped cells.
+   ========================================================= */
+const MAT_COLOR = { 1: 0x6aa84f, 2: 0x8b5a34, 3: 0x8e9198, 4: 0xb4864f, 5: 0x3a3a42, 6: 0x3f8f3b, 7: 0xf2c230 };
+const PLACEABLE = [{ m: STONE, name: 'Stone' }, { m: DIRT, name: 'Dirt' }, { m: WOOD, name: 'Wood' }, { m: LEAVES, name: 'Leaves' }];
+
+let S = newState();
+let aim = [0, 0, -1];
+let vert = 0;   // 0 = camera's horizontal aim, 1 = straight above, -1 = straight below
+let mat = STONE;
+let falling = false;
+
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 140);
+
+function cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+const skyColor = new THREE.Color();
+function applyTheme() {
+  skyColor.set(cssVar('--sky') || '#bcd6e8');
+  scene.background = skyColor.clone();
+  scene.fog = new THREE.Fog(skyColor.clone(), 45, 110);
+}
+applyTheme();
+if (window.matchMedia) {
+  const mq = window.matchMedia('(prefers-color-scheme: dark)');
+  if (mq.addEventListener) mq.addEventListener('change', applyTheme);
+}
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x6b7a86, 0.75));
+const sun = new THREE.DirectionalLight(0xffffff, 0.7);
+sun.position.set(0.6, 1, 0.35);
+scene.add(sun);
+
+// Underground vision: when the selected unit is underground, everything farther than uFogR from it fades to black.
+const sphereFog = { uFog: { value: 0 }, uFogC: { value: new THREE.Vector3() }, uFogR: { value: 18 } };
+function withSphereFog(sh) {
+  Object.assign(sh.uniforms, sphereFog);
+  sh.vertexShader = 'varying vec3 vFogW;\n' + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
+  {
+    vec4 fw = vec4(transformed, 1.0);
+  #ifdef USE_INSTANCING
+    fw = instanceMatrix * fw;
+  #endif
+    vFogW = (modelMatrix * fw).xyz;
+  }`);
+  sh.fragmentShader = 'varying vec3 vFogW;\nuniform float uFog; uniform vec3 uFogC; uniform float uFogR;\n' + sh.fragmentShader.replace('#include <fog_fragment>', `#include <fog_fragment>
+  if (uFog > 0.0) gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.0), uFog * smoothstep(uFogR - 5.0, uFogR, distance(vFogW, uFogC)));`);
+}
+
+// Block textures: one 32x32 pixel tile per material (grass has a top and a side), in a single atlas.
+// A faint darker border on every tile draws the lines between blocks.
+const TILE = 32, TILES = 8;                     // 0 grass top, 1 grass side, 2 dirt, 3 stone, 4 wood, 5 bedrock, 6 leaves, 7 gold
+const atlasTex = (() => {
+  const c = document.createElement('canvas'); c.width = TILE * TILES; c.height = TILE;
+  const ctx = c.getContext('2d'), img = ctx.createImageData(c.width, c.height);
+  let seed = 7;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  const rgb = h => [(h >> 16) & 255, (h >> 8) & 255, h & 255];
+  const put = (t, x, y, [r, g, b], k) => {
+    if (x === 0 || y === 0 || x === TILE - 1 || y === TILE - 1) k *= 0.8;          // the faint block outline
+    const o = (y * c.width + t * TILE + x) * 4;
+    img.data[o] = Math.min(255, r * k); img.data[o + 1] = Math.min(255, g * k); img.data[o + 2] = Math.min(255, b * k); img.data[o + 3] = 255;
+  };
+  // A noisy tile: base colour with a few accent colours sprinkled at the given rates.
+  const speckle = (t, base, accents, jitter = 0.08) => {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      let col = base, r = rnd();
+      for (const [hex, rate] of accents) { if (r < rate) { col = hex; break; } r -= rate; }
+      put(t, x, y, rgb(col), 1 - jitter + rnd() * jitter * 2);
+    }
+  };
+  speckle(0, 0x6aa84f, [[0x8bc56a, 0.10], [0x4f8a3a, 0.08]]);                          // grass top
+  speckle(2, 0x8b5a34, [[0x6e4528, 0.12], [0xa77548, 0.06], [0x8e9198, 0.02]]);        // dirt
+  speckle(1, 0x8b5a34, [[0x6e4528, 0.12], [0xa77548, 0.06]]);                          // grass side: dirt…
+  for (let x = 0; x < TILE; x++) {                                                      // …with a grass band that drips
+    const drip = 5 + ((rnd() * 4) | 0);
+    for (let y = 0; y < drip; y++) put(1, x, y, rgb(rnd() < 0.15 ? 0x8bc56a : 0x6aa84f), 0.95 + rnd() * 0.1);
+  }
+  speckle(3, 0x8e9198, [[0x75787f, 0.10], [0xa4a7ae, 0.06]]);                          // stone…
+  for (let k = 0; k < 5; k++) {                                                         // …with a few cracks
+    let x = (rnd() * TILE) | 0, y = (rnd() * TILE) | 0;
+    for (let n = 0; n < 7; n++) { put(3, x, y, rgb(0x63666c), 1); x = Math.max(1, Math.min(TILE - 2, x + ((rnd() * 3) | 0) - 1)); y = Math.max(1, Math.min(TILE - 2, y + 1)); }
+  }
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++)                        // wood: vertical grain
+    put(4, x, y, rgb(x % 6 === 0 || (x % 6 === 3 && rnd() < 0.5) ? 0x8f6638 : 0xb4864f), 0.92 + rnd() * 0.12);
+  speckle(5, 0x3a3a42, [[0x26262c, 0.25], [0x55555e, 0.15]], 0.15);                  // bedrock
+  speckle(6, 0x3f8f3b, [[0x2f6f2c, 0.25], [0x5aa553, 0.10]], 0.1);                   // leaves
+  speckle(7, 0xdcaa22, [[0xffe066, 0.16], [0xa87a12, 0.14], [0xfff6c8, 0.03]], 0.1); // gold
+  ctx.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
+  return t;
+})();
+const tileOf = (m, face) => m === GRASS ? (face === 't' ? 0 : face === 'b' ? 2 : 1) : { 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7 }[m];
+
+// Blocks: one mesh per chunk made of only the faces that border open space, so blocks meet without gaps.
+const blockGeo = new THREE.BoxGeometry(0.97, 0.97, 0.97);     // still used by the falling-block effect
+const blockMat = new THREE.MeshLambertMaterial({ map: atlasTex, vertexColors: true });
+// Ghost blocks: block surfaces closer to the camera than the selected unit, inside a circle around it on screen,
+// are dithered away so you can see the unit through a hill. uCut fades it in and out (0 = off).
+const ghost = { uCut: { value: 0 }, uUnitPx: { value: new THREE.Vector2() }, uRadiusPx: { value: 1 }, uUnitDepth: { value: 0 } };
+blockMat.onBeforeCompile = sh => {
+  withSphereFog(sh);
+  Object.assign(sh.uniforms, ghost);
+  sh.vertexShader = 'varying float vCutDepth;\n' + sh.vertexShader.replace('#include <project_vertex>',
+    '#include <project_vertex>\n  vCutDepth = -mvPosition.z;');
+  sh.fragmentShader = `varying float vCutDepth;
+uniform float uCut; uniform vec2 uUnitPx; uniform float uRadiusPx; uniform float uUnitDepth;
+float bayer2(vec2 p) { p = floor(mod(p, 2.0)); return (p.x * 2.0 + p.y * 3.0 - 4.0 * p.x * p.y) / 4.0; }
+` + sh.fragmentShader.replace('void main() {', `void main() {
+  if (uCut > 0.0 && vCutDepth < uUnitDepth - 0.7) {
+    float r = length(gl_FragCoord.xy - uUnitPx) / uRadiusPx;
+    if (r < 1.0) {
+      float amount = uCut * 0.72 * (1.0 - smoothstep(0.65, 1.0, r));
+      float th = bayer2(gl_FragCoord.xy) + bayer2(floor(gl_FragCoord.xy * 0.5)) * 0.25;
+      if (th < amount) discard;
+    }
+  }`);
+};
+// Chunked rendering: one instanced mesh per 32x32 column chunk; a change redraws only the chunks it touches.
+const CH = 16, NCX = W / CH, NCZ = D / CH;
+const chunkMeshes = [];
+const visBuf = new Int32Array(CH * CH * H);
+const tmpM = new THREE.Matrix4(), tmpC = new THREE.Color();
+// Layer view: blocks from cut.y upward are hidden around the view centre, so you look down onto one layer.
+// Auto follows the selected unit when it's underground; ▲/▼ pick a layer by hand.
+const CUT_R = 40;                               // hide within this many columns of the view centre
+let cut = null;                                 // { x, y, z } or null
+const hiddenCell = (x, y, z) => cut !== null && y >= cut.y && Math.abs(x - cut.x) <= CUT_R && Math.abs(z - cut.z) <= CUT_R;
+// Can you see this cell's neighbour face? World edges and the underside stay closed; the sky and cut-away cells are open.
+function openCell(X, Y, Z) {
+  if (Y < 0 || X < 0 || X >= W || Z < 0 || Z >= D) return false;
+  if (Y >= H) return true;
+  if (hiddenCell(X, Y, Z)) return true;
+  return S.g[idx(X, Y, Z)] === AIR;
+}
+// Each face: outward normal, its 4 corners counter-clockwise seen from outside, and which texture (side/top/bottom).
+const FACES = [
+  [[1, 0, 0], [[1, 0, 1], [1, 0, 0], [1, 1, 0], [1, 1, 1]], 's'],
+  [[-1, 0, 0], [[0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 1, 0]], 's'],
+  [[0, 0, 1], [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]], 's'],
+  [[0, 0, -1], [[1, 0, 0], [0, 0, 0], [0, 1, 0], [1, 1, 0]], 's'],
+  [[0, 1, 0], [[0, 1, 1], [1, 1, 1], [1, 1, 0], [0, 1, 0]], 't'],
+  [[0, -1, 0], [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]], 'b'],
+];
+const CORNER_UV = [[0, 0], [1, 0], [1, 1], [0, 1]];
+function rebuildChunk(k) {
+  const g = S.g, cx0 = (k % NCX) * CH, cz0 = ((k / NCX) | 0) * CH;
+  const pos = [], nor = [], uv = [], col = [], ind = [];
+  for (let y = 0; y < H; y++) for (let z = cz0; z < cz0 + CH; z++) for (let x = cx0; x < cx0 + CH; x++) {
+    const i = idx(x, y, z), m = g[i];
+    if (!m || hiddenCell(x, y, z)) continue;
+    let shade = 0.9 + (mix(i * 31 + 7) % 11) / 100;                  // a little variation from block to block
+    if (hiddenCell(x, y + 1, z)) shade *= 0.62;                        // the cut surface reads as a slice
+    for (const [n, corners, face] of FACES) {
+      if (!openCell(x + n[0], y + n[1], z + n[2])) continue;
+      const t = tileOf(m, face), base = pos.length / 3;
+      for (let c = 0; c < 4; c++) {
+        pos.push(x + corners[c][0], y + corners[c][1], z + corners[c][2]);
+        nor.push(n[0], n[1], n[2]);
+        uv.push((t * TILE + 0.5 + CORNER_UV[c][0] * (TILE - 1)) / (TILE * TILES), (0.5 + CORNER_UV[c][1] * (TILE - 1)) / TILE);
+        col.push(shade, shade, shade);
+      }
+      ind.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.setIndex(ind);
+  let mesh = chunkMeshes[k];
+  if (!mesh) {
+    mesh = new THREE.Mesh(geo, blockMat);
+    mesh.frustumCulled = false;
+    mesh.userData.chunk = true;
+    chunkMeshes[k] = mesh;
+    scene.add(mesh);
+  } else { mesh.geometry.dispose(); mesh.geometry = geo; }
+}
+// The block a ray hit: step half a block back against the face normal from the hit point.
+const hitCell = h => [Math.floor(h.point.x - h.face.normal.x * 0.5), Math.floor(h.point.y - h.face.normal.y * 0.5), Math.floor(h.point.z - h.face.normal.z * 0.5)];
+// Is the unit in a hole or tunnel? Count neighbouring columns whose terrain (not trees) rises above its head.
+function terrainTop(x, z) {
+  for (let y = H - 1; y >= 0; y--) { const v = S.g[idx(x, y, z)]; if (v && v !== WOOD && v !== LEAVES) return y + 1; }
+  return 0;
+}
+function inHole(x, y, z) {
+  let walls = 0;
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+    if (!dx && !dz) continue;
+    const X = x + dx, Z = z + dz;
+    if (X < 0 || X >= W || Z < 0 || Z >= D || terrainTop(X, Z) >= y + 2) walls++;
+  }
+  return walls >= 4;
+}
+let layerMode = 'auto';                          // 'auto' follows the selected unit, 'manual' uses layerManual
+let layerManual = H - 1;                         // the layer you look at; H - 1 means everything is shown
+function desiredCut() {
+  if (fps || commander) return null;
+  const x = Math.floor(walker.p.x), y = Math.floor(walker.p.y + 1e-4), z = Math.floor(walker.p.z);
+  const cx = Math.round(x / 8) * 8, cz = Math.round(z / 8) * 8;   // centre moves in steps, so walking doesn't redraw constantly
+  let L;
+  if (layerMode === 'auto') { if (!inHole(x, y, z)) return null; L = y; }
+  else { if (layerManual >= H - 1) return null; L = layerManual; }
+  return { x: cx, y: L + 1, z: cz };            // hide everything above the layer the unit stands on
+}
+function chunksOfCut(c, set) {
+  if (!c) return;
+  const x0 = Math.max(0, c.x - CUT_R), x1 = Math.min(W - 1, c.x + CUT_R);
+  const z0 = Math.max(0, c.z - CUT_R), z1 = Math.min(D - 1, c.z + CUT_R);
+  for (let cz = (z0 / CH) | 0; cz <= ((z1 / CH) | 0); cz++) for (let cx = (x0 / CH) | 0; cx <= ((x1 / CH) | 0); cx++) set.add(cz * NCX + cx);
+}
+function updateLayerUI() {
+  $('layerTxt').textContent = cut ? 'Layer ' + (cut.y - 1) : 'All';
+  const b = document.querySelector('[data-act="layerAuto"]');
+  b.classList.toggle('on', layerMode === 'auto');
+  b.setAttribute('aria-pressed', String(layerMode === 'auto'));
+}
+let cutCheckKey = '';
+function updateCut() {
+  const key = Math.floor(walker.p.x) + ',' + Math.floor(walker.p.y + 1e-4) + ',' + Math.floor(walker.p.z) + ':' + S.bh + ':' + fps + ':' + layerMode + ':' + layerManual;
+  if (key === cutCheckKey) return;
+  cutCheckKey = key;
+  const next = desiredCut();
+  const same = (cut === null && next === null) || (cut && next && cut.x === next.x && cut.y === next.y && cut.z === next.z);
+  if (!same) {
+    const dirty = new Set();
+    chunksOfCut(cut, dirty);
+    chunksOfCut(next, dirty);
+    cut = next;
+    for (const k of dirty) { rebuildChunk(k); rebuildWaterChunk(k); }
+    showRange();
+  }
+  updateLayerUI();
+}
+// Water: one transparent instanced mesh per chunk; each water cell is a box as tall as it is full.
+const waterGeo = new THREE.BoxGeometry(1, 1, 1);
+const waterMat = new THREE.MeshLambertMaterial({ color: 0x3f8fd8, transparent: true, opacity: 0.6, depthWrite: false });
+waterMat.onBeforeCompile = withSphereFog;
+const waterMeshes = [], waterCap = [];
+function waterShown(x, y, z, i) {
+  const g = S.g, w = S.w;
+  if (hiddenCell(x, y, z)) return false;
+  if (w[i] < WFULL || y === H - 1 || hiddenCell(x, y + 1, z)) return true;
+  const a = i + WD;
+  if (!g[a] && !w[a]) return true;                                   // the surface
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {         // an edge you can see through
+    const X = x + dx, Z = z + dz;
+    if (X < 0 || X >= W || Z < 0 || Z >= D) continue;
+    const j = i + dx + dz * W;
+    if (!g[j] && w[j] < WFULL) return true;
+  }
+  return false;
+}
+function rebuildWaterChunk(k) {
+  const w = S.w, cx0 = (k % NCX) * CH, cz0 = ((k / NCX) | 0) * CH;
+  let n = 0;
+  for (let y = 1; y < H; y++) for (let z = cz0; z < cz0 + CH; z++) for (let x = cx0; x < cx0 + CH; x++) {
+    const i = idx(x, y, z);
+    if (w[i] && waterShown(x, y, z, i)) visBuf[n++] = i;
+  }
+  let mesh = waterMeshes[k];
+  if (!n && !mesh) return;
+  if (!mesh || waterCap[k] < n) {
+    if (mesh) { scene.remove(mesh); if (mesh.dispose) mesh.dispose(); }
+    const cap = Math.max(64, Math.ceil(n * 1.5));
+    mesh = new THREE.InstancedMesh(waterGeo, waterMat, cap);
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 1;
+    waterMeshes[k] = mesh; waterCap[k] = cap;
+    scene.add(mesh);
+  }
+  for (let j = 0; j < n; j++) {
+    // Thin water is drawn a little thicker than it is, so trickles stay visible on their way down.
+    const i = visBuf[j], x = i % W, z = ((i / W) | 0) % D, y = (i / WD) | 0, f = Math.max(0.08, w[i] / WFULL);
+    tmpM.makeScale(1, f, 1).setPosition(x + 0.5, y + f / 2, z + 0.5);
+    mesh.setMatrixAt(j, tmpM);
+  }
+  mesh.count = n;
+  mesh.instanceMatrix.needsUpdate = true;
+}
+function rebuildAll() {
+  S.changed.length = 0;
+  S.wchanged.length = 0;
+  for (let k = 0; k < NCX * NCZ; k++) { rebuildChunk(k); rebuildWaterChunk(k); }
+}
+function chunksAround(list, set) {
+  for (const i of list) {
+    const x = i % W, z = ((i / W) | 0) % D;
+    for (const [dx, dz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const X = x + dx, Z = z + dz;
+      if (X >= 0 && X < W && Z >= 0 && Z < D) set.add(((Z / CH) | 0) * NCX + ((X / CH) | 0));
+    }
+  }
+}
+function rebuildChanged() {
+  if (!S.changed.length && !S.wchanged.length) return;
+  const blocksDirty = new Set(), waterDirty = new Set();
+  chunksAround(S.changed, blocksDirty);
+  chunksAround(S.changed, waterDirty);
+  chunksAround(S.wchanged, waterDirty);
+  S.changed.length = 0; S.wchanged.length = 0;
+  for (const k of blocksDirty) rebuildChunk(k);
+  for (const k of waterDirty) rebuildWaterChunk(k);
+}
+
+// Units: original pixel-art sprites on billboard quads that always turn to face the camera (Doom-style).
+// One body, with a different helmet and weapon per type. U/u are the team colour and its shade.
+const BODY = [
+  "................",
+  ".....HHHHH......",
+  "....HhhHHHH.....",
+  "...HHHHHHHHH....",
+  "...HHHHHHHHH....",
+  "....SSSSSS......",
+  "....SESSES......",
+  "....SSSSSS......",
+  ".....sSSs.......",
+  "...UUUUUUUU.....",
+  "..UUUUUUUUUU....",
+  "..UuUUUUUUuS....",
+  "..UuUUUUUUuU....",
+  "..SuUUUUUUuU....",
+  "....BBBBBBB.....",
+  "....UUUUUUU.....",
+  "....PPPPPPP.....",
+  "....PPP.PPP.....",
+  "....PPP.PPP.....",
+  "....PPP.PPP.....",
+  "....PPP.PPP.....",
+  "...KKKK.KKKK....",
+  "...KKKK.KKKK....",
+  "................"
+];
+// The knight rides a horse: its own 28 x 40 sprite, two cubes tall. R/r horse, A mane and tail, U/u team cloth.
+const KNIGHT = [
+  "...........UU...............",
+  "..........UUUU............M.",
+  ".........HhhhhH.........MM..",
+  ".........HhhHHH.........MM..",
+  ".........HHHHHH........W....",
+  ".........HEEHEE.......W.....",
+  ".........HHHHHH......W......",
+  ".........HHHHHH.....W.R.....",
+  "..........MMMM....UU.AR.....",
+  ".........uUUUUu...U.ARRRR...",
+  "......MMMMUUUUu..W..ARRERR..",
+  "......MUUMUUUUUUWS..ARRRRRR.",
+  "......MUUMUUUUUWSS..ARBBBRRr",
+  "......MUUMUUUUW....ARRRRRRRR",
+  "......MUUMUUUWu....ARRRRrrrr",
+  ".......MM.UUUUu...ARRRRR....",
+  ".......MMuUUUUu...ARRRRR....",
+  ".........BBBBBB..ARRRRR.....",
+  "........BB.PPPP..ARRRRR.....",
+  "........BBBPPPP..ARRRRR.....",
+  ".....RuUUUUUUPPUuRRRRR......",
+  "...ARRuUUUUUUPPUuRRRRR......",
+  "..ARRRuUUUUUUPPUuRRRRR......",
+  ".A.RRRuUUUUUUPPUuRRRR.......",
+  ".A.RRRuUUUUUUKKKuRRRR.......",
+  ".A.RRRuUUUUUUKKKuRRRR.......",
+  ".A.RRRuUUUUUUUUUuRRRR.......",
+  "..A.RRuUUUUUUUUUuRRRR.......",
+  ".A...ruUUUUUUUUUurrr........",
+  "..A.rruUUUUUUUUUurr.RR......",
+  ".A..rruUuuUuuUuuurr.RR......",
+  "....rr.RR........rr.RR......",
+  "....rr.RR........rr.RR......",
+  "....rr.rR........rr.rR......",
+  "....rr.RR........rr.RR......",
+  "....rr.RR........rr.RR......",
+  "....rr.RR........rr.RR......",
+  "....KK.KK........KK.KK......",
+  "....KK.KK........KK.KK......",
+  "............................"
+];
+// Weapon pixels per type: [x, y, palette key] drawn over the body.
+const WEAPON = {
+  soldier:  [[12, 4, 'M'], [12, 5, 'M'], [12, 6, 'M'], [12, 7, 'M'], [12, 8, 'M'], [12, 9, 'M'], [11, 10, 'B'], [12, 10, 'B'], [13, 10, 'B'], [12, 11, 'B']],
+  spearman: [[12, 0, 'M'], [11, 1, 'M'], [12, 1, 'M'], [13, 1, 'M'], ...Array.from({ length: 19 }, (_, k) => [12, 2 + k, 'W'])],
+  archer:   [[12, 4, 'W'], [13, 5, 'W'], [14, 6, 'W'], [14, 7, 'W'], [14, 8, 'W'], [14, 9, 'W'], [13, 10, 'W'], [12, 11, 'W'],
+             [12, 5, 'T'], [12, 6, 'T'], [12, 7, 'T'], [12, 8, 'T'], [12, 9, 'T'], [12, 10, 'T']],
+  builder:  [[10, 4, 'M'], [11, 4, 'M'], [12, 4, 'M'], [13, 4, 'M'], [14, 4, 'M'], [12, 5, 'W'], [12, 6, 'W'], [12, 7, 'W'], [12, 8, 'W'], [12, 9, 'W'], [12, 10, 'W']],
+};
+const HELMET = { soldier: ['#4b5320', '#6b7a35'], spearman: ['#6b4423', '#8a5a33'], knight: ['#9aa3ad', '#d5dbe1'],
+                 archer: ['#2f6b3a', '#4f8f5a'], builder: ['#e2b714', '#f5d652'] };
+const SPRITE_PAL = { S: '#f1c27d', s: '#d9a066', E: '#22303b', B: '#6b4423', P: '#3a3f2a', K: '#161616',
+                     M: '#c9ced6', W: '#8a5a33', T: '#e8e1cf', R: '#9a6b43', r: '#6e4a2c', A: '#2b1d14' };
+const spriteCache = new Map();
+function unitTexture(type, team) {
+  const key = type + team;
+  if (spriteCache.has(key)) return spriteCache.get(key);
+  const art = type === 'knight' ? KNIGHT : BODY;
+  const c = document.createElement('canvas');
+  c.width = art[0].length; c.height = art.length;
+  const ctx = c.getContext('2d');
+  const tc = new THREE.Color(TEAM_COLORS[team]), shade = tc.clone().multiplyScalar(0.62);
+  const pal = Object.assign({}, SPRITE_PAL, { U: '#' + tc.getHexString(), u: '#' + shade.getHexString(), H: HELMET[type][0], h: HELMET[type][1] });
+  const px = (x, y, k) => { ctx.fillStyle = pal[k]; ctx.fillRect(x, y, 1, 1); };
+  art.forEach((row, y) => { for (let x = 0; x < row.length; x++) if (row[x] !== '.') px(x, y, row[x]); });
+  for (const [x, y, k] of WEAPON[type] || []) px(x, y, k);
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
+  spriteCache.set(key, t);
+  return t;
+}
+let sel = 0;
+const selUnit = () => S.units[sel];
+const unitGroups = [];
+function makeUnitGroup(u) {
+  const g = new THREE.Group();
+  const tall = UNIT_TYPES[u.type].tall;
+  const sprite = new THREE.Mesh(new THREE.PlaneGeometry(tall ? 1.4 : 0.74, tall ? 2.0 : 1.1),   // same pixel size: 28 x 40 vs 16 x 24
+    new THREE.MeshBasicMaterial({ map: unitTexture(u.type, u.team), alphaTest: 0.5, side: THREE.DoubleSide }));
+  sprite.position.y = tall ? 1.0 : 0.55;
+  g.add(sprite);
+  g.userData.sprite = sprite;
+  // Invisible hit box, bigger than the sprite, used for long-press selection and attack targeting.
+  const hit = new THREE.Mesh(new THREE.BoxGeometry(1, tall ? 2.1 : 1.4, 1),
+    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false }));
+  hit.position.y = tall ? 1.05 : 0.7;
+  g.add(hit);
+  g.userData.hit = hit;
+  // HP bar above the head (turned to the camera together with the sprite).
+  const hpBar = new THREE.Group();
+  const hpBg = new THREE.Mesh(new THREE.PlaneGeometry(0.74, 0.12), new THREE.MeshBasicMaterial({ color: 0x22303b, side: THREE.DoubleSide }));
+  const hpFill = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 0.07), new THREE.MeshBasicMaterial({ color: 0x4ade80, side: THREE.DoubleSide }));
+  hpFill.position.z = 0.002;
+  hpBar.add(hpBg, hpFill);
+  hpBar.position.y = tall ? 2.18 : 1.28;
+  g.add(hpBar);
+  g.userData.hpBar = hpBar; g.userData.hpFill = hpFill;
+  g.userData.vis = new THREE.Vector3(u.x + 0.5, u.y, u.z + 0.5);
+  g.userData.key = u.type + u.team;
+  g.position.copy(g.userData.vis);
+  scene.add(g);
+  return g;
+}
+// Keep one group per unit: units can be built (and un-built by undo), and a reset starts over.
+function syncUnitGroups() {
+  S.units.forEach((u, k) => {
+    const g = unitGroups[k];
+    if (g && g.userData.key === u.type + u.team) return;
+    if (g) scene.remove(g);
+    unitGroups[k] = makeUnitGroup(u);
+  });
+  for (let k = S.units.length; k < unitGroups.length; k++) unitGroups[k].visible = false;
+  if (sel >= S.units.length) sel = 0;
+}
+syncUnitGroups();
+// Red rings under enemies the selected unit can attack (Attack mode).
+const atkRings = [];
+function atkRing(k) {
+  if (!atkRings[k]) {
+    const m = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.07, 6, 28), new THREE.MeshBasicMaterial({ color: 0xe0453a }));
+    m.rotation.x = Math.PI / 2; m.visible = false;
+    scene.add(m);
+    atkRings[k] = m;
+  }
+  return atkRings[k];
+}
+// Ladders: wooden rungs on every wall of a builder's hole. Rebuilt only when the ladders or the layer view change.
+const ladderTex = (() => {
+  const c = document.createElement('canvas'); c.width = 16; c.height = 16;
+  const x = c.getContext('2d');
+  x.fillStyle = '#7a4f2a'; x.fillRect(2, 0, 2, 16); x.fillRect(12, 0, 2, 16);
+  x.fillStyle = '#a8763f'; for (const y of [1, 5, 9, 13]) x.fillRect(2, y, 12, 2);
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
+  return t;
+})();
+const ladderMat = new THREE.MeshLambertMaterial({ map: ladderTex, alphaTest: 0.5, side: THREE.DoubleSide });
+ladderMat.onBeforeCompile = withSphereFog;
+let ladderMesh = null, ladderKey = '';
+function syncLadders() {
+  const key = (S.lad ? S.lh + ':' + S.lad.size : 'none') + ':' + (cut ? cut.x + ',' + cut.y + ',' + cut.z : '');
+  if (key === ladderKey) return;
+  ladderKey = key;
+  const faces = [];
+  if (S.lad) for (const i of S.lad) {
+    const x = i % W, z = ((i / W) | 0) % D, y = (i / WD) | 0;
+    if (hiddenCell(x, y, z)) continue;
+    for (const [dx, dz, rot] of [[1, 0, -Math.PI / 2], [-1, 0, Math.PI / 2], [0, 1, Math.PI], [0, -1, 0]])
+      if (inGrid(x + dx, y, z + dz) && S.g[idx(x + dx, y, z + dz)]) faces.push([x + 0.5 + dx * 0.47, y + 0.5, z + 0.5 + dz * 0.47, rot]);
+  }
+  if (!ladderMesh || ladderMesh.userData.cap < faces.length) {
+    if (ladderMesh) scene.remove(ladderMesh);
+    const cap = Math.max(64, faces.length * 2);
+    ladderMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.86, 1), ladderMat, cap);
+    ladderMesh.userData.cap = cap;
+    scene.add(ladderMesh);
+  }
+  const m = new THREE.Matrix4(), r = new THREE.Matrix4();
+  faces.forEach(([x, y, z, rot], k) => { m.makeTranslation(x, y, z).multiply(r.makeRotationY(rot)); ladderMesh.setMatrixAt(k, m); });
+  ladderMesh.count = faces.length;
+  ladderMesh.instanceMatrix.needsUpdate = true;
+}
+
+const selRing = new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.05, 6, 28), new THREE.MeshBasicMaterial({ color: 0xff7a1a }));
+selRing.rotation.x = Math.PI / 2;
+scene.add(selRing);
+
+// Buildings: a flag on a pole; the base gets a taller pole, a bigger flag and a ring. Flag colour = owner.
+// While being captured, the flag slides down the pole.
+const buildingViews = [];
+function syncBuildings() {
+  S.buildings.forEach((b, k) => {
+    let v = buildingViews[k];
+    const base = b.kind === 'base';
+    if (!v) {
+      v = new THREE.Group();
+      const poleH = base ? 2.6 : 1.7;
+      const pole = new THREE.Mesh(new THREE.BoxGeometry(0.08, poleH, 0.08), new THREE.MeshLambertMaterial({ color: 0x5b4127 }));
+      pole.position.set(0.32, poleH / 2, 0.32);
+      const flag = new THREE.Mesh(new THREE.BoxGeometry(base ? 0.7 : 0.48, base ? 0.42 : 0.3, 0.04), new THREE.MeshLambertMaterial({ color: 0xcfcfcf }));
+      v.add(pole, flag);
+      if (base) {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.06, 6, 32), new THREE.MeshBasicMaterial({ color: 0xcfcfcf }));
+        ring.rotation.x = Math.PI / 2; ring.position.y = 0.04;
+        v.add(ring); v.userData.ring = ring;
+      }
+      v.userData = Object.assign(v.userData, { flag, poleH, base });
+      scene.add(v);
+      buildingViews[k] = v;
+    }
+    v.position.set(b.x, b.y, b.z);
+    const col = b.owner >= 0 ? TEAM_COLORS[b.owner] : 0xcfcfcf;
+    v.userData.flag.material.color.setHex(col);
+    if (v.userData.ring) v.userData.ring.material.color.setHex(col);
+    const f = b.cp / CAPTURE_PTS, fh = v.userData.base ? 0.42 : 0.3;
+    v.userData.flag.position.set(0.32 + (v.userData.base ? 0.39 : 0.28), fh / 2 + (v.userData.poleH - fh) * f, 0.32);
+    v.visible = !hiddenCell(b.x, b.y, b.z);
+  });
+  for (let k = S.buildings.length; k < buildingViews.length; k++) buildingViews[k].visible = false;   // maps differ in buildings
+}
+
+// Move range: a "bucket fill" of flat tiles on every reachable cell, plus a marker for where you'll end up.
+const rangeTiles = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.92, 0.92),
+  new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.38, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }), 512);
+rangeTiles.frustumCulled = false;
+scene.add(rangeTiles);
+const destTile = new THREE.Mesh(new THREE.PlaneGeometry(0.96, 0.96),
+  new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.7, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }));
+destTile.rotation.x = -Math.PI / 2;
+scene.add(destTile);
+let range = new Map();
+let rangeKeys = [];
+let digMode = false;
+let attackMode = false;
+// Dig reach: a faint red box around the unit showing how far it can dig.
+const reachBox = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(7, 7, 7)),
+  new THREE.LineBasicMaterial({ color: 0xe0453a, transparent: true, opacity: 0.6 }));
+reachBox.visible = false;
+scene.add(reachBox);
+function showRange() {
+  const u = selUnit();
+  range = u.moved || falling || S.winner >= 0 || !myTurn() ? new Map() : moveRange(S, u, moveOf(u));
+  const m = new THREE.Matrix4(), rot = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
+  let n = 0;
+  rangeKeys = [];
+  for (const k of range.keys()) {
+    if (n >= 512) break;
+    const [x, y, z] = k.split(',').map(Number);
+    if (hiddenCell(x, y, z)) continue;
+    rangeKeys.push(k);
+    m.makeTranslation(x + 0.5, y + 0.02, z + 0.5).multiply(rot);
+    rangeTiles.setMatrixAt(n++, m);
+  }
+  rangeTiles.count = n;
+  rangeTiles.instanceMatrix.needsUpdate = true;
+}
+function tintUnits() {
+  syncUnitGroups();
+  S.units.forEach((u, k) => {
+    const g = unitGroups[k];
+    g.visible = !u.dead;
+    g.userData.sprite.material.color.setHex(u.team === S.team && u.moved ? 0x8a8f96 : 0xffffff);
+    const f = u.hp / MAX_HP;
+    g.userData.hpFill.scale.x = Math.max(0.001, f);
+    g.userData.hpFill.position.x = -0.34 * (1 - f);
+    g.userData.hpFill.material.color.setHex(f > 0.5 ? 0x4ade80 : f > 0.25 ? 0xfacc15 : 0xef4444);
+  });
+  syncBuildings();
+}
+
+let yaw = 0.9, pitch = 0.8, dist = 10, camDist = 10;
+let fps = false;                      // first-person view of the selected unit
+// Commander: a free-flying spectator camera for looking around and screenshots. It never touches the game.
+let commander = false;
+const cmd = { p: new THREE.Vector3(), yaw: 0, pitch: 0 };
+const moveStick = { x: 0, y: 0 }, lookStick = { x: 0, y: 0 };
+const cmdKeys = {};
+const camTarget = new THREE.Vector3();
+
+/* ---------- Effects (visual only): falling leaves and smoke puffs ---------- */
+const fx = [];
+const smokeGeo = new THREE.IcosahedronGeometry(0.32, 0);
+const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function spawnSmoke(x, y, z) {
+  const puffs = reduceMotion ? 2 : 6;
+  for (let k = 0; k < puffs; k++) {
+    const a = k * (Math.PI * 2 / puffs) + 0.4;
+    const m = new THREE.Mesh(smokeGeo, new THREE.MeshBasicMaterial({ color: 0xd8d3ca, transparent: true, opacity: 0.8, depthWrite: false }));
+    m.position.set(x + Math.cos(a) * 0.2, y + 0.05 * k, z + Math.sin(a) * 0.2);
+    m.scale.setScalar(0.45);
+    scene.add(m);
+    fx.push({ kind: 'smoke', m, t: 0, life: 0.5 + 0.04 * k, vx: Math.cos(a) * 0.7, vy: 0.8, vz: Math.sin(a) * 0.7 });
+  }
+}
+function spawnFalling(x, y, z, mat, lootId) {
+  let ly = 0;
+  for (let yy = y - 1; yy >= 0; yy--) if (S.g[idx(x, yy, z)]) { ly = yy + 1; break; }
+  if (reduceMotion || ly >= y) { spawnSmoke(x + 0.5, y + 0.5, z + 0.5); return; }
+  if (lootId) hiddenLoot.add(lootId);
+  const m = new THREE.Mesh(blockGeo, new THREE.MeshLambertMaterial({ color: MAT_COLOR[mat] }));
+  m.position.set(x + 0.5, y + 0.5, z + 0.5);
+  scene.add(m);
+  fx.push({ kind: 'fall', m, vy: 0, land: ly + 0.5, spin: (x * 7 + z * 3) % 2 ? 3 : -3, lootId });
+}
+function playEvents() {
+  for (const ev of S.events) {
+    const x = ev.i % W, z = ((ev.i / W) | 0) % D, y = (ev.i / WD) | 0;
+    if (ev.type === 'crumble') spawnFalling(x, y, z, ev.m, ev.loot);
+    else spawnSmoke(x + 0.5, y + 0.5, z + 0.5);
+  }
+  S.events.length = 0;
+}
+function updateFx(dt) {
+  for (let n = fx.length - 1; n >= 0; n--) {
+    const f = fx[n];
+    let done = false;
+    if (f.kind === 'fall') {
+      f.vy -= 22 * dt;
+      f.m.position.y += f.vy * dt;
+      f.m.rotation.z += f.spin * dt;
+      f.m.rotation.x += f.spin * 0.6 * dt;
+      if (f.m.position.y <= f.land) {
+        spawnSmoke(f.m.position.x, f.land, f.m.position.z); done = true;
+        if (f.lootId) { hiddenLoot.delete(f.lootId); syncLoot(); }
+      }
+    } else {
+      f.t += dt;
+      const p = Math.min(1, f.t / f.life);
+      f.m.scale.setScalar(0.45 + 1.1 * p);
+      f.m.material.opacity = 0.8 * (1 - p);
+      f.m.position.x += f.vx * dt * (1 - p);
+      f.m.position.y += f.vy * dt * (1 - p);
+      f.m.position.z += f.vz * dt * (1 - p);
+      done = p >= 1;
+    }
+    if (done) { scene.remove(f.m); f.m.material.dispose(); fx.splice(n, 1); }
+  }
+}
+
+/* ---------- Loot view ---------- */
+const lootGeo = new THREE.BoxGeometry(0.34, 0.34, 0.34);
+const lootMeshes = new Map();
+const hiddenLoot = new Set();
+function syncLoot() {
+  const alive = new Set();
+  for (const l of S.loot) {
+    alive.add(l.id);
+    let m = lootMeshes.get(l.id);
+    if (!m) {
+      m = new THREE.Mesh(lootGeo, new THREE.MeshLambertMaterial({ color: MAT_COLOR[l.m] }));
+      scene.add(m); lootMeshes.set(l.id, m);
+    }
+    m.userData.base = new THREE.Vector3(l.x + 0.5, l.y + 0.25, l.z + 0.5);
+    m.scale.setScalar(Math.min(1.6, 1 + 0.15 * (l.n - 1)));
+    m.visible = !hiddenLoot.has(l.id);
+  }
+  for (const [id, m] of lootMeshes) if (!alive.has(id)) { scene.remove(m); m.material.dispose(); lootMeshes.delete(id); hiddenLoot.delete(id); }
+}
+function animateLoot(now) {
+  for (const m of lootMeshes.values()) {
+    const b = m.userData.base; if (!b) continue;
+    m.position.set(b.x, b.y + Math.sin(now / 300 + b.x) * 0.06, b.z);
+    m.rotation.y = now / 600 + b.z;
+  }
+}
+
+/* ---------- Moving: tap a blue tile, the unit walks there along the shortest path; Confirm commits ---------- */
+const SPEED = 4.5;                                  // cells per second
+const walker = { p: new THREE.Vector3(), path: [], seg: 0, t: 0, face: 0 };
+let pending = null;                                 // where the unit ends up if you confirm
+const tmpV = new THREE.Vector3();
+
+function resetWalker() {
+  const u = selUnit();
+  walker.p.set(u.x + 0.5, u.y, u.z + 0.5);
+  walker.path = []; walker.seg = 0; walker.t = 0;
+  walker.face = unitGroups[sel].rotation.y;
+  pending = [u.x, u.y, u.z];
+}
+// Shortest path inside the range, using the same step rule as the range itself.
+function pathWithin(from, to) {
+  const u = selUnit(), tk = cellKey(...to);
+  const prev = new Map([[cellKey(...from), null]]), q = [from];
+  for (let h = 0; h < q.length; h++) {
+    const c = q[h];
+    if (cellKey(...c) === tk) break;
+    for (const n of stepsFrom(S, u, ...c)) {
+      const k = cellKey(...n);
+      if (!range.has(k) || prev.has(k)) continue;
+      prev.set(k, c); q.push(n);
+    }
+  }
+  if (!prev.has(tk)) return null;
+  const out = [];
+  for (let c = to; c; c = prev.get(cellKey(...c))) out.push(c);
+  return out.reverse();
+}
+function walkTo(target) {
+  const u = selUnit();
+  if (u.moved || falling || !myTurn()) return;
+  const animating = walker.path.length > 1;
+  const from = animating ? walker.path[Math.min(walker.seg + 1, walker.path.length - 1)].cell : pending;
+  const cells = pathWithin(from, target);
+  if (!cells) return;
+  const pts = cells.map(c => ({ cell: c, x: c[0] + 0.5, y: c[1], z: c[2] + 0.5 }));
+  if (Math.hypot(walker.p.x - pts[0].x, walker.p.z - pts[0].z) > 0.05 || Math.abs(walker.p.y - pts[0].y) > 0.05)
+    pts.unshift({ cell: from, x: walker.p.x, y: walker.p.y, z: walker.p.z });   // continue from where the unit is
+  walker.path = pts; walker.seg = 0; walker.t = 0;
+  pending = target;
+}
+/* ---------- Joystick: walk the unit freely inside its blue tiles; let go and it settles on the tile it's on ---------- */
+const joy = { x: 0, y: 0 };
+const canWalk = () => !selUnit().moved && !falling && myTurn() && range.size > 0 && S.winner < 0;
+// Try to move to (nx, nz). Crossing into the next column uses the same step rule as the move range,
+// so the unit climbs and drops exactly where it could walk; a blocked axis just doesn't move (you slide along edges).
+function joyTry(nx, nz) {
+  const u = selUnit(), p = walker.p, [ox, oy, oz] = pending;
+  const cx = Math.floor(nx), cz = Math.floor(nz);
+  if (cx === ox && cz === oz) { p.x = nx; p.z = nz; return; }
+  if (Math.abs(cx - ox) + Math.abs(cz - oz) !== 1) return;
+  const ny = stepTo(S, u, ox, oy, oz, cx - ox, cz - oz);
+  if (ny < 0 || !range.has(cellKey(cx, ny, cz))) return;
+  pending = [cx, ny, cz];
+  p.x = nx; p.z = nz;
+}
+function joyStep(dt) {
+  const p = walker.p;
+  if (walker.path.length > 1) {                       // a tap-walk was under way: continue from the tile it reached
+    pending = walker.path[walker.seg].cell.slice();
+    walker.path = [];
+  }
+  const push = Math.min(1, Math.hypot(joy.x, joy.y));
+  const fx = -Math.sin(yaw), fz = -Math.cos(yaw);    // "up" on the stick = away from the camera
+  const u = selUnit(), [cx, cy, cz] = pending;
+  if (climbsLadders(u) && hasLadder(S, cx, cy, cz) && Math.abs(joy.y) > Math.abs(joy.x)) {
+    // On a ladder the stick's up/down climbs. At the top, up steps out onto the ground on the side you face.
+    let target = null;
+    if (joy.y > 0) {
+      if (hasLadder(S, cx, cy + 1, cz) && range.has(cellKey(cx, cy + 1, cz))) target = [cx, cy + 1, cz];
+      else {
+        let best = -Infinity;
+        for (const c of stepsFrom(S, u, cx, cy, cz)) {
+          if (c[1] !== cy + 1 || (c[0] === cx && c[2] === cz) || !range.has(cellKey(...c))) continue;
+          const d = (c[0] - cx) * fx + (c[2] - cz) * fz;
+          if (d > best) { best = d; target = c; }
+        }
+      }
+    } else {
+      const down = stepsFrom(S, u, cx, cy, cz).find(c => c[0] === cx && c[2] === cz && c[1] < cy);
+      if (down && range.has(cellKey(...down))) target = down;
+    }
+    if (target) {
+      const tx = target[0] + 0.5, ty = target[1], tz = target[2] + 0.5;
+      const dx = tx - p.x, dy = ty - p.y, dz = tz - p.z, dist = Math.hypot(dx, dy, dz), step = SPEED * 0.7 * push * dt;
+      if (dist <= step) { p.set(tx, ty, tz); pending = target.slice(); }
+      else { p.x += dx / dist * step; p.y += dy / dist * step; p.z += dz / dist * step; }
+    }
+    return;
+  }
+  const vx = -fz * joy.x + fx * joy.y, vz = fx * joy.x + fz * joy.y, len = Math.hypot(vx, vz) || 1;
+  const step = SPEED * push * dt;
+  joyTry(p.x + vx / len * step, p.z);
+  joyTry(p.x, p.z + vz / len * step);
+  walker.face = Math.atan2(vx, vz);
+  p.y += (pending[1] - p.y) * Math.min(1, dt * 14);  // hop up / drop down as it crosses
+}
+function stepWalker(dt) {
+  const u = selUnit(), p = walker.p;
+  if (Math.hypot(joy.x, joy.y) > 0.15 && canWalk() && !commander && !lobbyOpen) {
+    joyStep(dt);
+  } else if (walker.path.length > 1) {
+    let adv = dt * SPEED;
+    while (adv > 0 && walker.seg < walker.path.length - 1) {
+      const a = walker.path[walker.seg], b = walker.path[walker.seg + 1];
+      const len = Math.max(0.01, Math.hypot(b.x - a.x, b.z - a.z));
+      const need = (1 - walker.t) * len;
+      if (adv >= need) { adv -= need; walker.seg++; walker.t = 0; } else { walker.t += adv / len; adv = 0; }
+    }
+    if (walker.seg >= walker.path.length - 1) {
+      const e = walker.path[walker.path.length - 1];
+      p.set(e.x, e.y, e.z);
+      walker.path = [];
+    } else {
+      const a = walker.path[walker.seg], b = walker.path[walker.seg + 1], t = walker.t;
+      p.x = a.x + (b.x - a.x) * t;
+      p.z = a.z + (b.z - a.z) * t;
+      if (b.y > a.y) p.y = a.y + (b.y - a.y) * Math.min(1, t * 2.5);                                  // hop up early
+      else if (b.y < a.y) p.y = t < 0.5 ? a.y : a.y + (b.y - a.y) * Math.min(1, ((t - 0.5) * 2) ** 2); // walk off, then fall
+      else p.y = a.y;
+      if (Math.hypot(b.x - a.x, b.z - a.z) > 0.01) walker.face = Math.atan2(b.x - a.x, b.z - a.z);
+    }
+  } else {
+    const c = u.moved ? [u.x, u.y, u.z] : pending;
+    p.lerp(tmpV.set(c[0] + 0.5, c[1], c[2] + 0.5), 1 - Math.pow(0.0005, dt));
+  }
+  destTile.visible = !u.moved && range.size > 0 && !digMode;
+  rangeTiles.visible = !digMode;
+  reachBox.visible = digMode;
+  if (digMode) { const c = u.moved ? [u.x, u.y, u.z] : pending; reachBox.position.set(c[0] + 0.5, c[1] + 0.5, c[2] + 0.5); }
+  if (destTile.visible) destTile.position.set(pending[0] + 0.5, pending[1] + 0.03, pending[2] + 0.5);
+}
+
+const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+
+/* ---------- Attack: enemies in reach of where the selected unit is (or will be, once its move is confirmed) ---------- */
+function attackTargets() {
+  const u = selUnit();
+  if (u.acted || u.dead) return [];
+  const from = u.moved ? u : { ...u, x: pending[0], y: pending[1], z: pending[2] };
+  return S.units.map((b, k) => canAttack(S, from, b) ? k : -1).filter(k => k >= 0);
+}
+function enemyAtScreen(cx, cy) {
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const boxes = unitGroups.filter((g, k) => k < S.units.length && S.units[k].team !== S.team && !S.units[k].dead && g.userData.sprite.visible).map(g => g.userData.hit);
+  const h = raycaster.intersectObjects([...boxes, ...chunkMeshes], false)[0];
+  if (!h || h.object.userData.chunk) return -1;
+  return unitGroups.findIndex(g => g.userData.hit === h.object);
+}
+function tryAttack(cx, cy) {
+  const u = selUnit();
+  if (falling || !myTurn()) return;
+  const k = enemyAtScreen(cx, cy);
+  if (k < 0) return;
+  if (!attackTargets().includes(k)) { flash('Out of reach: move next to it first'); refreshHud(); return; }
+  beginAction(S);
+  if (!u.moved && (pending[0] !== u.x || pending[1] !== u.y || pending[2] !== u.z)) {
+    if (!moveUnit(S, u, ...pending)) { endAction(S); flash('Planned move no longer valid'); refreshHud(); return; }
+  }
+  const b = S.units[k];
+  const hit = attack(S, u, b);
+  endAction(S);
+  if (!hit) { refreshHud(); return; }
+  spawnSmoke(b.x + 0.5, b.y + 0.7, b.z + 0.5);
+  flash((b.dead ? unitName(b) + ' is down' : unitName(b) + ' hit: ' + b.hp + ' HP left') + (u.dead ? ' · ' + unitName(u) + ' fell to the counter' : u.hp < 10 ? ' · counter: ' + u.hp + ' HP left' : ''));
+  setMode(null);
+  showRange();
+  refreshHud();
+}
+function setMode(m) {
+  digMode = m === 'dig';
+  attackMode = m === 'attack';
+  const d = document.querySelector('[data-act="dig"]'), at = document.querySelector('[data-act="attack"]');
+  d.classList.toggle('on', digMode); d.setAttribute('aria-pressed', String(digMode));
+  d.textContent = digMode ? 'Dig ✓' : 'Dig';
+  at.classList.toggle('on', attackMode); at.setAttribute('aria-pressed', String(attackMode));
+  at.textContent = attackMode ? 'Attack ✓' : 'Attack';
+}
+
+/* ---------- Long-press a unit: the nearest thing under the finger decides ---------- */
+function unitAtScreen(cx, cy) {
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const boxes = unitGroups.filter((g, k) => k < S.units.length && k !== sel && g.userData.sprite.visible && S.units[k].team === viewTeam() && !S.units[k].dead).map(g => g.userData.hit);
+  const h = raycaster.intersectObjects([...boxes, ...chunkMeshes], false)[0];
+  if (!h || h.object.userData.chunk) return -1;
+  return unitGroups.findIndex(g => g.userData.hit === h.object);
+}
+
+/* ---------- Tap a block (dig mode): any face counts ---------- */
+function blockFromTap(cx, cy) {
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const h = raycaster.intersectObjects(chunkMeshes, false)[0];
+  return h ? hitCell(h) : null;
+}
+function tryDig(cx, cy) {
+  const u = selUnit();
+  if (falling || !myTurn()) return;
+  const c = blockFromTap(cx, cy);
+  if (!c) return;
+  // Digging happens from the unit's real cell, so an unconfirmed move is confirmed first.
+  // If that planned move is no longer valid (the world changed under it), drop it and dig from where the unit is.
+  beginAction(S);                               // move + dig + collapse + flood = one undoable action
+  if (!u.moved && (pending[0] !== u.x || pending[1] !== u.y || pending[2] !== u.z)) {
+    if (!moveUnit(S, u, ...pending)) { pending = [u.x, u.y, u.z]; flash('Planned move cancelled'); }
+  }
+  if (!canDig(S, u, ...c)) {
+    const m = S.g[idx(...c)];
+    flash(m === BEDROCK ? "Bedrock can't be dug" : 'Too far to dig');
+    endAction(S);
+    refreshHud();
+    return;
+  }
+  const before = S.gold[S.team];
+  const stay = !u.moved && pending[0] === u.x && pending[1] === u.y && pending[2] === u.z;
+  dig(S, u, ...c);
+  if (stay) pending = [u.x, u.y, u.z];          // digging under your feet takes you down: the plan follows
+  if (S.gold[S.team] > before) flash('+' + (S.gold[S.team] - before) + ' gold');
+  rebuildChanged();
+  settle();
+}
+let flashTimer = 0;
+function flash(msg) { $('status').textContent = msg; flashTimer = performance.now() + 1200; }
+
+/* ---------- Ghost-aware picking and tap snapping ---------- */
+const pickV = new THREE.Vector3(), pickS = new THREE.Vector2();
+// Is this world point inside the see-through circle in front of the selected unit (so you can't see it)?
+function isGhosted(p) {
+  if (ghost.uCut.value < 0.3) return false;
+  pickV.copy(p).applyMatrix4(camera.matrixWorldInverse);
+  if (-pickV.z >= ghost.uUnitDepth.value - 0.7) return false;
+  renderer.getDrawingBufferSize(pickS);
+  pickV.copy(p).project(camera);
+  const px = (pickV.x * 0.5 + 0.5) * pickS.x, py = (pickV.y * 0.5 + 0.5) * pickS.y;
+  return Math.hypot(px - ghost.uUnitPx.value.x, py - ghost.uUnitPx.value.y) < ghost.uRadiusPx.value * 0.85;
+}
+// Can the camera see this point? (A block in the way counts, unless it's see-through.)
+function pointVisible(p) {
+  const dir = pickV.copy(p).sub(camera.position), len = dir.length();
+  raycaster.set(camera.position, dir.normalize());
+  raycaster.far = len - 0.05;
+  const hits = raycaster.intersectObjects(chunkMeshes, false);
+  raycaster.far = Infinity;
+  for (const h of hits) if (!isGhosted(h.point)) return false;
+  return true;
+}
+// A tap that missed: snap to the nearest visible blue tile within a fingertip of it, else nothing.
+const SNAP_PX = 44;
+function snapTile(cx, cy) {
+  const r = canvas.getBoundingClientRect(), cands = [];
+  const v = new THREE.Vector3();
+  for (const k of rangeKeys) {
+    const [x, y, z] = k.split(',').map(Number);
+    v.set(x + 0.5, y + 0.05, z + 0.5).project(camera);
+    if (v.z > 1) continue;
+    const sx = r.left + (v.x * 0.5 + 0.5) * r.width, sy = r.top + (-v.y * 0.5 + 0.5) * r.height;
+    const d = Math.hypot(sx - cx, sy - cy);
+    if (d <= SNAP_PX) cands.push([d, x, y, z]);
+  }
+  cands.sort((a, b) => a[0] - b[0]);
+  for (const [, x, y, z] of cands.slice(0, 6)) if (pointVisible(new THREE.Vector3(x + 0.5, y + 0.1, z + 0.5))) return [x, y, z];
+  return null;
+}
+
+/* ---------- Tap a tile: raycast against blocks and range tiles ---------- */
+function cellFromTap(cx, cy) {
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const hits = raycaster.intersectObjects([...chunkMeshes, rangeTiles], false);
+  for (const h of hits) {
+    if (h.object === rangeTiles) return rangeKeys[h.instanceId].split(',').map(Number);
+    if (h.object.userData.chunk) {
+      if (isGhosted(h.point)) continue;                       // see-through blocks don't catch taps
+      if (!h.face || h.face.normal.y < 0.5) return null;      // only the top of a block counts
+      const [x, y, z] = hitCell(h);
+      return [x, y + 1, z];
+    }
+  }
+  return null;
+}
+
+/* ---------- Units menu ---------- */
+const hex = c => '#' + c.toString(16).padStart(6, '0');
+function renderUnitsPanel() {
+  const panel = $('unitsPanel');
+  panel.innerHTML = '';
+  S.units.forEach((u, k) => {
+    if (u.team !== viewTeam() || u.dead) return;
+    const b = document.createElement('button');
+    b.className = 'btn urow' + (k === sel ? ' cur' : '');
+    b.innerHTML = '<span class="dot" style="background:' + hex(TEAM_COLORS[u.team]) + '"></span>' + unitName(u) +
+      '<span class="sub">' + u.hp + ' HP · ' + (u.moved ? 'moved' : 'ready') + '</span>';
+    b.addEventListener('pointerdown', e => { e.preventDefault(); selectUnit(k); toggleUnits(false); });
+    panel.appendChild(b);
+  });
+}
+function toggleUnits(open) {
+  const panel = $('unitsPanel'), btn = $('unitsBtn');
+  const show = open === undefined ? panel.hidden : open;
+  panel.hidden = !show;
+  btn.setAttribute('aria-expanded', String(show));
+  btn.textContent = show ? 'Units ▾' : 'Units ▴';
+  if (show) renderUnitsPanel();
+}
+function selectUnit(k) {
+  if (k === sel) return;
+  unitGroups[sel].userData.vis.copy(walker.p);   // the old unit slides back to its real cell
+  sel = k;
+  resetWalker();
+  showRange();
+  refreshHud();
+}
+
+/* ---------- Build panel (your base) ---------- */
+function renderBuildPanel() {
+  const panel = $('buildPanel');
+  panel.innerHTML = '';
+  for (const type of TYPES) {
+    const t = UNIT_TYPES[type], b = document.createElement('button');
+    b.className = 'btn urow';
+    b.disabled = !canBuild(S, type) || !myTurn();
+    b.innerHTML = '<span class="dot" style="background:' + hex(TEAM_COLORS[S.team]) + '"></span>' + t.label + '<span class="sub">' + t.cost + ' gold</span>';
+    b.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      if (falling || !canBuild(S, type) || !myTurn()) return;
+      beginAction(S);
+      const nu = buildUnit(S, type);
+      endAction(S);
+      toggleBuild(false);
+      if (nu) flash(t.label + ' ready next turn');
+      refreshHud();
+    });
+    panel.appendChild(b);
+  }
+}
+function toggleBuild(open) {
+  const panel = $('buildPanel'), btn = $('buildBtn');
+  const show = open === undefined ? panel.hidden : open;
+  panel.hidden = !show;
+  btn.setAttribute('aria-expanded', String(show));
+  btn.textContent = show ? 'Build ▾' : 'Build ▴';
+  if (show) { toggleUnits(false); renderBuildPanel(); }
+}
+// Capture from where the unit is, or where it will be once its planned move is confirmed.
+function captureTarget() {
+  const u = selUnit();
+  if (!pending) return null;
+  return canCapture(S, u.moved ? u : { ...u, x: pending[0], y: pending[1], z: pending[2] });
+}
+
+/* ---------- HUD ---------- */
+const $ = id => document.getElementById(id);
+function refreshHud() {
+  const u = selUnit();
+  $('udot').style.background = hex(TEAM_COLORS[u.team]);
+  $('ustate').textContent = attackMode ? 'Attack mode · tap a red-ringed enemy' : digMode ? 'Dig mode · tap a block'
+    : NET.id && !myTurn() ? (winnerNow() >= 0 ? 'Game over' : NET.sending ? 'Sending your turn…' : 'Waiting for ' + oppName())
+    : u.acted ? 'Done this turn' : u.moved ? 'Moved · can still attack' : 'Ready · tap a blue tile';
+  $('pos').textContent = `x${u.x} y${u.y} z${u.z}`;
+  $('turn').textContent = S.turn + ' · ' + (NET.id && NET.team >= 0 ? (S.team === NET.team ? 'Your move' : oppName() + "'s move") : TEAM_NAMES[S.team] + "'s move");
+  $('uname').textContent = unitName(u) + ' · ' + u.hp + ' HP';
+  $('invwood').textContent = S.inv[WOOD];
+  syncLoot();
+  tintUnits();
+  $('hash').textContent = stateHash(S);
+  if (performance.now() > flashTimer) $('status').textContent = falling ? 'Collapsing…' : '';
+  const mine = myTurn();
+  document.querySelector('[data-act="confirm"]').disabled = u.moved || falling || !mine;
+  document.querySelector('[data-act="endturn"]').disabled = falling || !mine;
+  const nAct = S.cursor;
+  $('acount').textContent = nAct;
+  $('joy').classList.toggle('off', !canWalk());
+  document.querySelector('[data-act="undo"]').disabled = falling || !S.cursor || !mine;
+  document.querySelector('[data-act="redo"]').disabled = falling || S.cursor >= S.history.length || !mine;
+  document.querySelector('[data-act="attack"]').disabled = u.acted || falling || S.winner >= 0 || !mine;
+  document.querySelector('[data-act="capture"]').disabled = falling || !captureTarget() || !mine;
+  document.querySelector('[data-act="dig"]').disabled = falling || !mine || digTool(S, u) === 'none';
+  syncLadders();
+  $('gold').textContent = S.gold[S.team];
+  $('income').textContent = '(+' + incomeOf(S, S.team) + '/turn)';
+  $('buildBtn').disabled = falling || !mine || !TYPES.some(t => canBuild(S, t));
+  if (!$('buildPanel').hidden) renderBuildPanel();
+  const won = winnerNow();
+  $('winView').hidden = won < 0 && NET.desync < 0;
+  if (NET.desync >= 0) {                         // a turn played differently on the two devices: no fair way to continue
+    $('winText').textContent = 'Out of sync';
+    $('winSub').textContent = 'Turn ' + (NET.desync + 1) + " didn't play out the same on both devices, so this game can't continue.";
+    $('winUndo').hidden = true; $('winAgain').textContent = 'Main menu';
+  }
+  if (won >= 0 && NET.desync < 0) {
+    $('winText').textContent = NET.id && NET.team >= 0 ? (won === NET.team ? 'You win!' : 'You lose') : TEAM_NAMES[won] + ' wins!';
+    $('winSub').textContent = NET.quit < 0 ? 'The enemy base has been captured.'
+      : NET.quit === NET.team ? 'You quit the game.' : (NET.names[NET.quit] || TEAM_NAMES[NET.quit]) + ' quit the game.';
+  }
+  if (NET.id) {                                  // online: a win still has to be sent; after that, no undo
+    const unsent = !NET.done && S.winner === NET.team;
+    $('winUndo').hidden = !unsent;
+    $('winAgain').textContent = unsent ? 'Send' : 'Main menu';
+  }
+  netLine();
+  if (!$('unitsPanel').hidden) renderUnitsPanel();
+}
+
+/* ---------- Gravity animation: paces sim steps, sim stays deterministic ---------- */
+// Keep the planned destination valid after the world changes: if it's no longer reachable, plan to stay put.
+function syncPending() {
+  const u = selUnit();
+  if (u.moved || walker.path.length > 1) return;
+  if (!range.has(cellKey(...pending))) pending = [u.x, u.y, u.z];
+}
+let waterSteps = 0;
+function settle() {
+  if (falling) return;
+  falling = true;
+  waterSteps = 0;
+  refreshHud();
+  const tick = () => {
+    // If the selected unit's plan is "stay here", keep it glued to the unit when the unit falls or gets pushed.
+    const u = selUnit(), stay = !u.moved && walker.path.length <= 1 && pending[0] === u.x && pending[1] === u.y && pending[2] === u.z;
+    const moved = gravityStep(S);
+    let wet = false;
+    if (!moved) {                                  // as many water ticks as fit in ~12 ms, so floods play out in seconds
+      const t0 = performance.now();
+      for (let k = 0; k < 40 && waterSteps < 20000 && performance.now() - t0 < 12; k++, waterSteps++) { if (waterStep(S)) wet = true; else break; }
+    }
+    if (stay) pending = [u.x, u.y, u.z];
+    playEvents();
+    rebuildChanged();
+    refreshHud();
+    if (wet) $('status').textContent = 'Water flowing…';
+    if (moved || wet) setTimeout(tick, moved ? 80 : 33);
+    else { falling = false; endAction(S); showRange(); syncPending(); refreshHud(); }
+  };
+  tick();
+}
+
+// Camera collision: a solid voxel, or anything under the world.
+function solidPoint(x, y, z) {
+  if (y < 0) return true;
+  const X = Math.floor(x), Y = Math.floor(y), Z = Math.floor(z);
+  return inGrid(X, Y, Z) && S.g[idx(X, Y, Z)] !== AIR && !hiddenCell(X, Y, Z);
+}
+function ballBlocked(x, y, z, r) {
+  return solidPoint(x, y, z) ||
+    solidPoint(x + r, y, z) || solidPoint(x - r, y, z) ||
+    solidPoint(x, y + r, z) || solidPoint(x, y - r, z) ||
+    solidPoint(x, y, z + r) || solidPoint(x, y, z - r);
+}
+
+/* ---------- Actions ---------- */
+const PLAY_ACTS = new Set(['confirm', 'capture', 'undo', 'redo', 'endturn', 'dig', 'attack']);
+function act(a) {
+  const u = selUnit();
+  if (PLAY_ACTS.has(a) && !myTurn()) { flash(NET.sending ? 'Sending your turn…' : 'Not your turn'); refreshHud(); return; }
+  if (a === 'confirm') {
+    if (u.moved || falling) return;
+    const [x, y, z] = pending;
+    beginAction(S);
+    if (moveUnit(S, u, x, y, z)) showRange();
+    endAction(S);
+  } else if (a === 'layerUp' || a === 'layerDown') {
+    const cur = cut ? cut.y - 1 : H - 1;
+    if (layerMode === 'auto') { layerMode = 'manual'; layerManual = cur; }
+    layerManual = Math.max(1, Math.min(H - 1, layerManual + (a === 'layerUp' ? 1 : -1)));
+    updateCut();
+  } else if (a === 'layerAuto') {
+    if (layerMode === 'auto') { layerMode = 'manual'; layerManual = cut ? cut.y - 1 : H - 1; }
+    else layerMode = 'auto';
+    updateCut();
+  } else if (a === 'next') {
+    let k = -1;
+    for (let step = 1; step <= S.units.length; step++) {
+      const j = (sel + step) % S.units.length, v = S.units[j];
+      if (j !== sel && v.team === viewTeam() && !v.dead && !v.moved) { k = j; break; }
+    }
+    if (k >= 0) selectUnit(k);
+    else flash(u.moved ? 'All units have moved' : 'No other unit is ready');
+  } else if (a === 'capture') {
+    if (falling) return;
+    const target = captureTarget();
+    if (!target) { flash('Nothing to capture here'); refreshHud(); return; }
+    beginAction(S);
+    if (!u.moved && (pending[0] !== u.x || pending[1] !== u.y || pending[2] !== u.z)) moveUnit(S, u, ...pending);
+    const ok = capture(S, u);
+    endAction(S);
+    if (ok) flash(target.owner === u.team ? (target.kind === 'base' ? 'Base captured!' : 'Village captured: +' + INCOME + '/turn')
+                                          : 'Capturing… ' + Math.max(0, target.cp) + ' left');
+    setMode(null);
+    resetWalker();
+    showRange();
+  } else if (a === 'undo' || a === 'redo') {
+    if (falling) return;
+    if (!(a === 'undo' ? undo(S) : redo(S))) { flash(a === 'undo' ? 'Nothing to undo' : 'Nothing to redo'); refreshHud(); return; }
+    hiddenLoot.clear();
+    syncUnitGroups();
+    rebuildChanged();
+    resetWalker();
+    showRange();
+  } else if (a === 'commander') {
+    commander = !commander;
+    document.body.classList.toggle('commander', commander);
+    if (commander) {                         // start exactly where the camera is, looking the same way
+      cmd.p.copy(camera.position);
+      const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+      cmd.yaw = Math.atan2(-dir.x, -dir.z); cmd.pitch = Math.asin(Math.max(-1, Math.min(1, dir.y)));
+      setMode(null); toggleUnits(false);
+    }
+    for (const k in cmdKeys) cmdKeys[k] = false;
+    moveStick.x = moveStick.y = lookStick.x = lookStick.y = 0;
+  } else if (a === 'view') {
+    fps = !fps;
+    pitch = fps ? 0.15 : 0.8;               // first person: look slightly down; third: back to overview
+    const b = document.querySelector('[data-act="view"]');
+    b.textContent = fps ? '3rd person' : '1st person';
+    b.setAttribute('aria-pressed', String(fps));
+  } else if (a === 'dig') {
+    setMode(digMode ? null : 'dig');
+  } else if (a === 'attack') {
+    setMode(attackMode ? null : 'attack');
+    if (attackMode && !attackTargets().length) flash('No enemy in reach');
+  } else if (a === 'endturn') {
+    if (falling) return;                     // wait for the current action to finish resolving
+    if (NET.id) { submitTurn(); return; }    // online: the server checks the turn first
+    endTurn(S);
+    turnStarted();
+    if (S.wnext.length) settle();            // the same steps as the sim's finishTurn(), animated
+  }
+  refreshHud();
+}
+// After End turn (yours or the opponent's): select the side to move and say what happened.
+// Whose units the screen follows: online, always your own; in pass & play, whoever is to move.
+const viewTeam = () => NET.id && NET.team >= 0 ? NET.team : S.team;
+const oppName = () => NET.id && NET.team >= 0 ? NET.names[1 - NET.team] || TEAM_NAMES[1 - NET.team] : TEAM_NAMES[S.team];
+function turnStarted(quiet) {
+  setMode(null);
+  const vt = viewTeam();
+  if (sel < S.units.length && S.units[sel].team === vt && !S.units[sel].dead) { resetWalker(); showRange(); }
+  else {
+    const first = S.units.findIndex(v => v.team === vt && !v.dead);
+    if (first >= 0 && first !== sel) selectUnit(first); else { resetWalker(); showRange(); }
+  }
+  const hurt = (S.drowned || []).map(id => unitName(S.units[id]) + (S.units[id].dead ? ' drowned' : ' is drowning'));
+  if (!quiet) flash(hurt.length ? hurt.join(', ') : !NET.id ? TEAM_NAMES[S.team] + "'s turn"
+    : S.team === NET.team ? 'Your turn' : 'Waiting for ' + oppName());
+}
+/* ---------- Online: a match on the server. Your actions stay local (undo works) until End turn sends them;
+   the server replays them with the same sim-core.js and passes them on. The opponent's turns arrive the same way. ---------- */
+const GAME_NAME = 'Cube Wars';
+const NET = { id: null, team: -1, legacy: null, count: 0, rev: -1, players: [true, false], names: [null, null], sending: false, done: false,
+              winner: -1, quit: -1, desync: -1 };    // winner/quit from the server: a match can also end by someone quitting;
+                                                     // desync: the first turn that didn't replay the same here or there
+const winnerNow = () => S.winner >= 0 ? S.winner : NET.winner;
+const myTurn = () => !NET.id || (S.team === NET.team && !NET.sending && !NET.done);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const onWeb = location.protocol.startsWith('http');                    // opened as a file: hot-seat only
+const HOME = location.pathname.replace(/[^/]*$/, '');                     // '/' live, '/preview/' for a preview copy
+const DEBUG = !onWeb || new URLSearchParams(location.search).has('debug');   // dev tools: state hash, Commander camera
+// Where the server and the shareable site are. The itch.io build sets window.CUBE_WARS to point at cubewars.io;
+// there the game runs embedded in itch's page, so no service worker / notifications.
+const EMBEDDED = !!window.CUBE_WARS;
+const API_BASE = EMBEDDED ? window.CUBE_WARS.api : '';
+const QUICK_PLAY = false;                                                      // switched off for now (2026-10-10)
+const SITE = EMBEDDED ? window.CUBE_WARS.site : location.origin + HOME;        // invite links open the game here
+function stored(key, value) {
+  try {
+    if (value === undefined) return JSON.parse(localStorage.getItem(key));
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch { return null; }
+}
+// You: a guest player made on first visit. The secret token stays in this browser (and in a cache the
+// service worker can read, so a notification can say whose turn it is).
+let me = { token: stored('bw:player') && stored('bw:player').token };
+async function api(method, path, body) {
+  const headers = {};
+  if (body) headers['content-type'] = 'application/json';
+  if (me.token) headers.authorization = 'Bearer ' + me.token;
+  const r = await fetch(API_BASE + '/api' + path, { method, headers, body: body && JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(j.error || 'server error ' + r.status), { status: r.status });
+  return j;
+}
+async function signIn() {
+  if (me.token) {
+    try { Object.assign(me, await api('GET', '/me')); return me; }
+    catch (e) { if (e.status !== 401) throw e; }                       // unknown token: start a new guest
+  }
+  const p = await api('POST', '/players');
+  me = { token: p.token };
+  stored('bw:player', { token: p.token });
+  Object.assign(me, await api('GET', '/me'));
+  return me;
+}
+function shareTokenWithWorker() {
+  if (!('caches' in window) || !me.token) return;
+  caches.open('bw').then(c => c.put('/__token', new Response(me.token))).catch(() => {});
+}
+
+/* ---------- Notifications: a service worker shows "Your turn" even when the app is closed ---------- */
+let config = null;
+const pushable = () => !EMBEDDED && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+async function enablePush(ask) {
+  if (!pushable() || !config || !config.vapidKey) return false;
+  if (Notification.permission === 'denied') return false;
+  if (Notification.permission === 'default' && (!ask || await Notification.requestPermission() !== 'granted')) return false;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const key = Uint8Array.from(atob(config.vapidKey.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+    const sub = await reg.pushManager.getSubscription() || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+    await api('POST', '/me/push', { subscription: sub.toJSON() });
+    return true;
+  } catch { return false; }
+}
+function updatePushUi() {
+  const b = $('lNotify'), note = $('lPushNote');
+  const state = !pushable() ? 'none' : Notification.permission;
+  b.hidden = state !== 'default';
+  note.hidden = state !== 'denied';
+  note.textContent = 'Notifications are blocked for this site. Allow them in the browser settings to hear about your turns.';
+}
+
+/* ---------- Lobby ---------- */
+let lobbyOpen = false, searching = false;
+function openLobby() {
+  lobbyOpen = true;
+  document.body.classList.add('lobby');
+  $('lobby').hidden = false;
+  refreshLobby();
+}
+function closeLobby() {
+  lobbyOpen = false;
+  document.body.classList.remove('lobby');
+  $('lobby').hidden = true;
+}
+function gameRow(g) {
+  const b = document.createElement('button');
+  b.className = 'btn game' + (g.winner >= 0 ? ' over' : '');
+  const who = g.opponent ? 'vs ' + g.opponent : g.kind === 'invite' ? 'Waiting for your friend' : 'vs ?';
+  const status = g.quit >= 0 ? (g.quit === g.team ? 'You quit' : 'They quit')
+    : g.winner >= 0 ? (g.winner === g.team ? 'You won' : 'You lost')
+    : g.myTurn ? 'Your turn' : g.joined ? 'Their turn' : 'Not joined';
+  b.innerHTML = '<span class="dot"></span><span class="who"></span><span class="st"></span>';
+  b.querySelector('.dot').style.background = hex(TEAM_COLORS[g.team]);
+  b.querySelector('.who').textContent = who;
+  const st = b.querySelector('.st');
+  st.textContent = status;
+  st.classList.toggle('turn', g.winner < 0 && g.myTurn);
+  b.addEventListener('click', () => { location.href = HOME + '?m=' + g.id; });
+  return b;
+}
+async function refreshLobby() {
+  if (!lobbyOpen || !me.id) return;
+  try { Object.assign(me, await api('GET', '/me')); } catch { return; }
+  if (document.activeElement !== $('lName')) $('lName').value = me.name;
+  const list = $('lGames');
+  list.innerHTML = '';
+  const live = me.games.filter(g => g.winner < 0), over = me.games.filter(g => g.winner >= 0).slice(0, 5);
+  for (const g of [...live, ...over]) list.appendChild(gameRow(g));
+  if (!me.games.length) list.innerHTML = '<div class="lempty">No games yet. Play a friend, or play yourself.</div>';
+  setSearching(me.searching);
+  updatePushUi();
+  $('lGoogle').hidden = !me.google;
+  $('lGoogle').textContent = me.google ? '✓ Signed in with Google: your games follow you to any device.' : '';
+  $('gsi').hidden = !!me.google;
+  if (config && config.googleClientId && !me.google) loadGoogle();
+}
+function setSearching(on) {
+  const was = searching;
+  searching = on;
+  $('lSearch').hidden = !on;
+  $('lQuick').hidden = on || !QUICK_PLAY;
+  if (on && !was) waitForOpponent();
+}
+async function waitForOpponent() {
+  while (searching && lobbyOpen) {
+    try {
+      const r = await api('GET', '/quick');
+      if (r.match) { location.href = HOME + '?m=' + r.match; return; }
+      if (!r.waiting) { setSearching(false); return; }
+    } catch { await sleep(3000); }
+  }
+}
+async function quickPlay() {
+  enablePush(true);                            // a good moment to ask: "we'll tell you when it starts"
+  try {
+    const r = await api('POST', '/quick');
+    if (r.match) { location.href = HOME + '?m=' + r.match; return; }
+    setSearching(true);
+  } catch (e) { flash(e.message); }
+}
+async function playFriend() {
+  try {
+    const m = await api('POST', '/matches');
+    location.href = HOME + '?m=' + m.id;
+  } catch (e) { flash("Couldn't start a match: " + e.message); }
+}
+async function rename() {
+  const name = $('lName').value.trim();
+  if (!name || name === me.name) { $('lName').value = me.name; return; }
+  try { me.name = (await api('POST', '/me', { name })).name; } catch (e) { flash(e.message); }
+  $('lName').value = me.name;
+}
+let googleLoading = false;
+function loadGoogle() {
+  if (googleLoading) return;
+  googleLoading = true;
+  const sc = document.createElement('script');
+  sc.src = 'https://accounts.google.com/gsi/client';
+  sc.async = true;
+  sc.onload = () => {
+    google.accounts.id.initialize({ client_id: config.googleClientId, callback: async r => {
+      try {
+        const res = await api('POST', '/me/google', { credential: r.credential });
+        flash(res.switched ? 'Welcome back, ' + res.name : 'Google account connected');
+        refreshLobby();
+      } catch (e) { flash(e.message); }
+    } });
+    google.accounts.id.renderButton($('gsi'), { theme: 'outline', size: 'large', shape: 'pill', text: 'continue_with' });
+  };
+  document.head.appendChild(sc);
+}
+
+/* ---------- In a match ---------- */
+function netLine() {
+  if (!NET.id) return;
+  const opp = NET.team >= 0 ? NET.names[1 - NET.team] : null;
+  const you = NET.team >= 0 ? 'You are ' + TEAM_NAMES[NET.team] + (opp ? ' vs ' + opp : '') + ' · ' : 'Watching · ';
+  const waitingForJoin = NET.team === 0 && !NET.players[1];
+  $('netLine').textContent = winnerNow() >= 0 ? you + TEAM_NAMES[winnerNow()] + ' won'
+    : NET.sending ? you + 'Sending…'
+    : myTurn() ? you + 'Your turn' + (waitingForJoin ? ' · no opponent yet' : '')
+    : you + 'Waiting for ' + (NET.team >= 0 && opp ? opp : TEAM_NAMES[S.team]) + '…';
+  $('shareBtn').hidden = !waitingForJoin;
+}
+function showShare() {
+  $('shareLink').value = SITE + '?m=' + NET.id;
+  $('shareView').hidden = false;
+}
+async function shareLink() {
+  const url = $('shareLink').value;
+  try {
+    if (navigator.share) await navigator.share({ title: GAME_NAME, text: 'Play ' + GAME_NAME + ' with me', url });
+    else { await navigator.clipboard.writeText(url); flash('Link copied'); }
+  } catch { $('shareLink').select(); }
+}
+// Apply turns from the server that we don't have yet. Each one is replayed and hash-checked like on the server.
+function applyMatch(m, initial) {
+  NET.rev = m.rev; NET.players = m.players; NET.names = m.names || NET.names;
+  if (m.quit >= 0) { NET.quit = m.quit; NET.winner = m.winner; NET.done = true; }
+  if (m.desync >= 0 && NET.desync < 0) { NET.desync = m.desync; NET.done = true; }
+  let got = 0;
+  for (const t of m.turns) {
+    if (t.n !== NET.count) continue;
+    const err = replayTurn(S, t);
+    if (err) {                                   // their turn doesn't reproduce here: stop the game and tell the server
+      NET.done = true; NET.desync = t.n;
+      api('POST', `/matches/${NET.id}/desync`, { n: t.n, reason: err }).catch(() => {});
+      refreshHud();
+      return;
+    }
+    NET.count++; got++;
+  }
+  if (S.winner >= 0) NET.done = true;
+  if (got) {
+    hiddenLoot.clear();
+    syncUnitGroups();
+    if (initial) { S.events.length = 0; rebuildAll(); } else { playEvents(); rebuildChanged(); }
+    turnStarted(initial);
+    if (!initial && S.team === NET.team && navigator.vibrate) navigator.vibrate([30, 60, 30]);
+  }
+  refreshHud();
+}
+async function poll() {
+  for (;;) {
+    try {
+      const m = await api('GET', `/matches/${NET.id}?since=${NET.count}&rev=${NET.rev}`);
+      while (falling || NET.sending) await sleep(150);   // never replay into the middle of a local animation or send
+      applyMatch(m, false);
+    } catch { await sleep(3000); }
+  }
+}
+async function submitTurn() {
+  if (NET.sending) return;
+  const turn = { n: NET.count, groups: turnGroups(S), hash: stateHash(S) };
+  NET.sending = true;
+  setMode(null); showRange(); refreshHud();
+  for (let tries = 0; ; tries++) {
+    try { await api('POST', `/matches/${NET.id}/turns`, { token: NET.legacy || undefined, winner: S.winner, ...turn }); break; }
+    catch (e) {
+      if (e.status && e.status < 500 && e.status !== 429) {   // refused: our copy is wrong, start over from the server's
+        NET.done = true; NET.sending = false;
+        flash('The server refused this turn (' + e.message + '). Reloading…');
+        setTimeout(() => location.reload(), 2500);
+        return;
+      }
+      if (tries >= 2) { NET.sending = false; flash("Couldn't reach the server. Tap End turn to try again."); refreshHud(); return; }
+      await sleep(1500 * (tries + 1));
+    }
+  }
+  NET.sending = false; NET.count++;
+  if (S.winner >= 0) { NET.done = true; refreshHud(); return; }
+  endTurn(S);
+  turnStarted();
+  if (S.wnext.length) settle();
+  refreshHud();
+}
+function askToJoin(host) {
+  $('joinText').textContent = host ? host + ' invited you to a game' : "You're invited to a game";
+  $('joinView').hidden = false;
+  return new Promise(done => {
+    const pick = yes => { $('joinView').hidden = true; done(yes); };
+    $('joinYes').onclick = () => pick(true);
+    $('joinNo').onclick = () => pick(false);
+  });
+}
+async function openMatch(id) {
+  NET.id = id;
+  $('reset').hidden = true;
+  $('netRow').hidden = false;
+  const legacy = stored('bw:' + id);             // matches from before accounts: a seat token per match
+  try {
+    const path = '/matches/' + encodeURIComponent(id);
+    let m = await api('GET', path + '?since=0');
+    if (legacy && legacy.token) { NET.team = legacy.team; NET.legacy = legacy.token; }
+    else if (m.you < 0 && !m.players[1] && await askToJoin(m.names[0])) {
+      // Only a tap takes the seat: link previews and stray browser tabs must never join by just opening the link.
+      try { await api('POST', path + '/join'); } catch { flash('Someone else took that seat. You can watch.'); }
+      m = await api('GET', path + '?since=0');
+    }
+    if (!NET.legacy) NET.team = m.you;
+    if (S.rules !== (m.rules || 1) || S.seed !== (m.seed || 1)) newGame(m.rules || 1, m.seed || 1);   // this match's rules and map
+    applyMatch(m, true);
+    turnStarted(true);                           // look at your own army, even before any turn was played
+    if (NET.team === 0 && !m.players[1] && !m.count) showShare();
+    poll();
+  } catch (e) {
+    NET.done = true;
+    flash(e.status === 404 ? 'There is no match at this link' : "Can't reach the server: " + e.message);
+    refreshHud();
+  }
+}
+async function startOnline() {
+  $('hashBox').hidden = !DEBUG;
+  $('cmdBtn').hidden = !DEBUG;
+  if (!onWeb) return;
+  $('menuBtn').hidden = false;
+  if (!EMBEDDED && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  const id = new URLSearchParams(location.search).get('m');
+  if (!id) openLobby();
+  try {
+    config = await api('GET', '/config');
+    await signIn();
+    shareTokenWithWorker();
+    if (pushable() && Notification.permission === 'granted') enablePush(false);   // keep the subscription fresh
+  } catch (e) { flash("Can't reach the server: " + e.message); return; }
+  if (id) openMatch(id); else refreshLobby();
+}
+$('lQuick').addEventListener('click', quickPlay);
+$('lCancel').addEventListener('click', async () => { setSearching(false); try { await api('DELETE', '/quick'); } catch { /* it expires anyway */ } });
+$('lFriend').addEventListener('click', playFriend);
+$('lLocal').addEventListener('click', () => { newGame(undefined, randomSeed()); closeLobby(); });
+$('lNotify').addEventListener('click', async () => { if (!await enablePush(true)) flash('Notifications are not available here'); updatePushUi(); });
+$('lName').addEventListener('change', rename);
+$('lName').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
+
+/* ---------- Your player: deleting it (logins live on this device; there's no other way back in) ---------- */
+function acct({ title, text, main, onMain, danger }) {
+  $('aTitle').textContent = title;
+  $('aText').textContent = text || '';
+  $('aMain').textContent = main; $('aMain').onclick = onMain;
+  $('aMain').className = 'btn' + (danger ? ' danger' : '');
+  $('aAlt').onclick = closeAcct;
+  $('acctView').hidden = false;
+}
+const closeAcct = () => { $('acctView').hidden = true; };
+$('lDelete').addEventListener('click', () => acct({
+  title: 'Delete ' + me.name + '?',
+  text: 'Your games in progress count as a quit (your opponents win), and your player is removed for good. This cannot be undone.',
+  main: 'Delete for good', danger: true,
+  onMain: async () => {
+    try {
+      await api('DELETE', '/me');
+      stored('bw:player', null);
+      location.href = HOME;
+    } catch (e) { $('aText').textContent = e.message; }
+  },
+}));
+function openMenu() {
+  const canQuit = NET.id && NET.team >= 0 && winnerNow() < 0 && !NET.done;
+  $('mTitle').textContent = 'Menu';
+  $('mQuit').hidden = !canQuit;
+  $('mQuit').textContent = NET.players[1] ? 'Quit game' : 'Cancel this game';
+  $('mQuitYes').hidden = true;
+  $('mRestart').hidden = !!NET.id;
+  $('mLobby').hidden = false;
+  $('mClose').textContent = 'Keep playing';
+  $('menuView').hidden = false;
+}
+const closeMenu = () => { $('menuView').hidden = true; };
+$('menuBtn').addEventListener('click', openMenu);
+$('mClose').addEventListener('click', closeMenu);
+$('menuView').addEventListener('click', e => { if (e.target === $('menuView')) closeMenu(); });
+$('mLobby').addEventListener('click', () => { closeMenu(); if (NET.id) location.href = HOME; else openLobby(); });
+$('mRestart').addEventListener('click', () => { closeMenu(); $('reset').dispatchEvent(new PointerEvent('pointerdown')); });
+$('mQuit').addEventListener('click', () => {       // step 2: say what quitting means, then confirm
+  const opp = oppName();
+  $('mTitle').textContent = NET.players[1] ? 'Quit this game? ' + opp + ' wins.' : 'Cancel this game? Nobody has joined yet.';
+  $('mQuitYes').textContent = NET.players[1] ? 'Yes, quit' : 'Yes, cancel it';
+  $('mQuit').hidden = $('mLobby').hidden = $('mRestart').hidden = true;
+  $('mQuitYes').hidden = false;
+});
+$('mQuitYes').addEventListener('click', async () => {
+  $('mQuitYes').disabled = true;
+  try {
+    const r = await api('POST', `/matches/${NET.id}/quit`);
+    closeMenu();
+    if (r.cancelled) { location.href = HOME; return; }
+    NET.winner = r.winner; NET.quit = NET.team; NET.done = true;
+    setMode(null); showRange(); refreshHud();
+  } catch (e) { flash(e.message); closeMenu(); }
+  $('mQuitYes').disabled = false;
+});
+setInterval(() => { if (lobbyOpen && !document.hidden) refreshLobby(); }, 20000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshLobby(); });
+
+function press(el) { el.classList.add('pressed'); }
+function release(el) { el.classList.remove('pressed'); }
+document.querySelectorAll('[data-act]').forEach(el => {
+  el.addEventListener('pointerdown', e => { e.preventDefault(); press(el); act(el.dataset.act); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => el.addEventListener(t, () => release(el)));
+  el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(el.dataset.act); } });
+});
+$('unitsBtn').addEventListener('pointerdown', e => { e.preventDefault(); toggleBuild(false); toggleUnits(); });
+$('buildBtn').addEventListener('pointerdown', e => { e.preventDefault(); toggleBuild(); });
+$('winUndo').addEventListener('click', () => act('undo'));
+$('winAgain').addEventListener('click', () => {
+  if (!NET.id) $('reset').dispatchEvent(new PointerEvent('pointerdown'));
+  else if (!NET.done && S.winner === NET.team) act('endturn');
+  else location.href = HOME;
+});
+$('shareBtn').addEventListener('click', showShare);
+$('shareGo').addEventListener('click', shareLink);
+$('shareClose').addEventListener('click', () => { $('shareView').hidden = true; });
+// A fresh world: the latest rules with a random gold layout for pass & play, or a match's own rules and seed.
+const randomSeed = () => 1 + Math.floor(Math.random() * 2147483000);
+function newGame(rules, seed) {
+  S = newState(rules, seed);
+  sel = 0;
+  setMode(null);
+  hiddenLoot.clear();
+  cut = null; cutCheckKey = ''; layerMode = 'auto'; layerManual = H - 1;
+  syncUnitGroups();
+  S.units.forEach((u, k) => { unitGroups[k].userData.vis.set(u.x + 0.5, u.y, u.z + 0.5); });
+  resetWalker();
+  rebuildAll(); showRange(); refreshHud();
+}
+$('reset').addEventListener('pointerdown', e => {
+  e.preventDefault();
+  if (falling) return;
+  newGame(undefined, randomSeed());
+});
+
+window.addEventListener('keyup', e => { cmdKeys[e.key.toLowerCase()] = false; });
+window.addEventListener('blur', () => { for (const k in cmdKeys) cmdKeys[k] = false; });
+// Keyboard (desktop testing): C commander, Enter confirm, E end turn, G dig mode, V 1st/3rd person, [ ] layer down/up, L auto layer, N next unit, U units.
+window.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (commander) {                           // desktop: WASD fly, arrows look, Space/Shift up/down, C or Esc exit
+    if (k === 'c' || k === 'escape') { if (!e.repeat) act('commander'); return; }
+    if (k === 'p') { if (!e.repeat) takeScreenshot(); return; }
+    cmdKeys[k] = true; e.preventDefault(); return;
+  }
+  if (e.repeat) return;
+  if (k === 'c') { if (DEBUG) act('commander'); return; }
+  if (k === 'z') { act('undo'); return; }
+  if (k === 'k') { act('capture'); return; }
+  if (k === 'b') { toggleBuild(); return; }
+  if (k === 'y') { act('redo'); return; }
+  if (k === 'enter') { e.preventDefault(); act('confirm'); return; }
+  if (k === 'e') { act('endturn'); return; }
+  if (k === 'g') { act('dig'); return; }
+  if (k === 'v') { act('view'); return; }
+  if (k === 'n') { act('next'); return; }
+  if (k === 'x') { act('attack'); return; }
+  if (k === ']') { act('layerUp'); return; }
+  if (k === '[') { act('layerDown'); return; }
+  if (k === 'l') { act('layerAuto'); return; }
+  if (k === 'u') { toggleUnits(); return; }
+});
+
+/* ---------- Camera: swipe to rotate, pinch / wheel to zoom ---------- */
+const pts = new Map();
+let pinchStart = 0, distStart = dist;
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId);
+  pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pts.size === 2) {
+    const [p, q2] = [...pts.values()];
+    pinchStart = Math.hypot(p.x - q2.x, p.y - q2.y); distStart = dist;
+  }
+});
+canvas.addEventListener('pointermove', e => {
+  const p = pts.get(e.pointerId);
+  if (!p) return;
+  if (commander) { p.x = e.clientX; p.y = e.clientY; return; }
+  if (pts.size === 1) {
+    yaw -= (e.clientX - p.x) * 0.008;
+    pitch = Math.min(1.4, Math.max(fps ? -1.3 : 0.12, pitch + (e.clientY - p.y) * 0.006));
+  }
+  p.x = e.clientX; p.y = e.clientY;
+  if (pts.size === 2) {
+    const [a, b] = [...pts.values()];
+    const dNow = Math.hypot(a.x - b.x, a.y - b.y);
+    if (pinchStart > 0) dist = Math.min(24, Math.max(2.5, distStart * pinchStart / dNow));
+  }
+});
+const endPt = e => { pts.delete(e.pointerId); if (pts.size < 2) pinchStart = 0; };
+canvas.addEventListener('pointerup', endPt);
+canvas.addEventListener('pointercancel', endPt);
+canvas.addEventListener('wheel', e => { e.preventDefault(); dist = Math.min(24, Math.max(2.5, dist * (1 + e.deltaY * 0.001))); }, { passive: false });
+
+/* ---------- Commander sticks: each a fixed circle; drag inside to push ---------- */
+function bindStick(el, out) {
+  const knob = el.querySelector('.knob'), R = 46;
+  let id = null;
+  const set = e => {
+    const r = el.getBoundingClientRect();
+    let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+    const l = Math.hypot(dx, dy);
+    if (l > R) { dx *= R / l; dy *= R / l; }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    out.x = dx / R; out.y = -dy / R;
+  };
+  const end = e => { if (e.pointerId !== id) return; id = null; out.x = out.y = 0; knob.style.transform = ''; el.classList.remove('live'); };
+  el.addEventListener('pointerdown', e => { if (id !== null) return; e.preventDefault(); id = e.pointerId; el.setPointerCapture(id); el.classList.add('live'); set(e); });
+  el.addEventListener('pointermove', e => { if (e.pointerId === id) set(e); });
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+}
+bindStick($('stickMove'), moveStick);
+bindStick($('joy'), joy);
+// Screenshot: render the 3D view once more (no buttons, no sticks) and offer it as a PNG.
+let downloadsApi = null;
+if (window.claude && window.claude.use) window.claude.use('downloads').then(d => { downloadsApi = d; }, () => {});
+function takeScreenshot() {
+  renderer.render(scene, camera);           // read the canvas right after drawing it
+  canvas.toBlob(async blob => {
+    if (!blob) return;
+    const f = $('shotFlash'); f.style.opacity = '0.8'; setTimeout(() => { f.style.opacity = '0'; }, 120);
+    const d = new Date(), pad = n => String(n).padStart(2, '0');
+    const name = `sim-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.png`;
+    if (downloadsApi) {
+      try { await downloadsApi.save({ filename: name, data: blob }); return; }
+      catch (e) { if (e && e.code === 'declined') return; }   // otherwise fall back to the preview
+    }
+    const img = $('shotImg');
+    if (img.src) URL.revokeObjectURL(img.src);
+    img.src = URL.createObjectURL(blob);
+    $('shotView').hidden = false;
+  }, 'image/png');
+}
+$('shotBtn').addEventListener('click', takeScreenshot);
+$('shotClose').addEventListener('click', () => { $('shotView').hidden = true; });
+bindStick($('stickLook'), lookStick);
+function stepCommander(dt) {
+  const k = cmdKeys;
+  const lx = lookStick.x + ((k.arrowright ? 1 : 0) - (k.arrowleft ? 1 : 0));
+  const ly = lookStick.y + ((k.arrowup ? 1 : 0) - (k.arrowdown ? 1 : 0));
+  cmd.yaw -= lx * 2.2 * dt;
+  cmd.pitch = Math.max(-1.5, Math.min(1.5, cmd.pitch + ly * 1.6 * dt));
+  const mx = moveStick.x + ((k.d ? 1 : 0) - (k.a ? 1 : 0));
+  const my = moveStick.y + ((k.w ? 1 : 0) - (k.s ? 1 : 0));
+  const up = (k[' '] ? 1 : 0) - (k.shift ? 1 : 0);
+  const cp = Math.cos(cmd.pitch);
+  const fx = -Math.sin(cmd.yaw) * cp, fy = Math.sin(cmd.pitch), fz = -Math.cos(cmd.yaw) * cp;   // flies where you look
+  const rx = Math.cos(cmd.yaw), rz = -Math.sin(cmd.yaw);
+  const sp = 12 * dt;
+  cmd.p.x += (fx * my + rx * mx) * sp;
+  cmd.p.y += (fy * my + up) * sp;
+  cmd.p.z += (fz * my + rz * mx) * sp;
+  cmd.p.y = Math.max(0.5, Math.min(H + 30, cmd.p.y));
+  camera.position.copy(cmd.p);
+  camera.lookAt(cmd.p.x + fx, cmd.p.y + fy, cmd.p.z + fz);
+}
+
+/* ---------- Tap vs. swipe on the canvas ---------- */
+let tap = null, touches = 0, pressTimer = 0;
+const LONG_PRESS = 450;
+function cancelPress() { clearTimeout(pressTimer); pressTimer = 0; }
+canvas.addEventListener('pointerdown', e => {
+  touches++;
+  tap = touches === 1 ? { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now() } : null;
+  cancelPress();
+  if (tap) {
+    const { x, y } = tap;
+    pressTimer = setTimeout(() => {          // held still long enough: try to select a unit there
+      pressTimer = 0;
+      if (!tap || commander) return;
+      const k = unitAtScreen(x, y);
+      if (k >= 0) {
+        selectUnit(k);
+        if (navigator.vibrate) navigator.vibrate(20);
+      }
+      tap = null;                            // a long press never counts as a tap
+    }, LONG_PRESS);
+  }
+});
+canvas.addEventListener('pointermove', e => {
+  if (tap && e.pointerId === tap.id && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 8) { tap = null; cancelPress(); }
+});
+canvas.addEventListener('pointerup', e => {
+  touches = Math.max(0, touches - 1);
+  cancelPress();
+  if (commander) { tap = null; return; }
+  if (tap && e.pointerId === tap.id && performance.now() - tap.t < 300) {
+    if (!$('unitsPanel').hidden || !$('buildPanel').hidden) { toggleUnits(false); toggleBuild(false); tap = null; return; }
+    if (attackMode) tryAttack(e.clientX, e.clientY);
+    else if (digMode) tryDig(e.clientX, e.clientY);
+    else {
+      let c = cellFromTap(e.clientX, e.clientY);
+      if (!c || !range.has(cellKey(...c))) c = snapTile(e.clientX, e.clientY);
+      if (c && range.has(cellKey(...c))) walkTo(c);
+    }
+  }
+  tap = null;
+});
+canvas.addEventListener('pointercancel', () => { touches = Math.max(0, touches - 1); tap = null; cancelPress(); });
+
+/* ---------- Ghost blocks: is anything between the camera and the selected unit? ---------- */
+const ghostV = new THREE.Vector3(), bufSize = new THREE.Vector2();
+let ghostOn = 0;
+// Underground vision: fades in when the selected unit is in a hole or has ground over its head.
+let fogOn = 0;
+const BLACK = new THREE.Color(0x000000);
+function updateUnderground(dt) {
+  const x = Math.floor(walker.p.x), y = Math.floor(walker.p.y + 1e-4), z = Math.floor(walker.p.z);
+  const under = !commander && !lobbyOpen && inGrid(x, y, z) && (inHole(x, y, z) || terrainTop(x, z) > y + 1);
+  fogOn += ((under ? 1 : 0) - fogOn) * (1 - Math.pow(0.02, dt));
+  if (fogOn < 0.005) fogOn = 0;
+  sphereFog.uFog.value = fogOn;
+  sphereFog.uFogC.value.set(walker.p.x, walker.p.y + 0.6, walker.p.z);
+  scene.background.copy(skyColor).lerp(BLACK, fogOn);
+  scene.fog.color.copy(scene.background);
+}
+// Outside the visible sphere underground, units and flags are hidden too.
+const inDark = p => fogOn > 0.5 && p.distanceTo(sphereFog.uFogC.value) > sphereFog.uFogR.value;
+function updateGhost(dt) {
+  let blocked = false;
+  if (!fps && !commander) {
+    const hx = walker.p.x, hy = walker.p.y + 0.6, hz = walker.p.z;
+    const dx = camera.position.x - hx, dy = camera.position.y - hy, dz = camera.position.z - hz;
+    const len = Math.hypot(dx, dy, dz);
+    for (let t = 0.55; t < len; t += 0.2) {
+      if (solidPoint(hx + dx / len * t, hy + dy / len * t, hz + dz / len * t)) { blocked = true; break; }
+    }
+  }
+  ghostOn += ((blocked ? 1 : 0) - ghostOn) * (1 - Math.pow(0.002, dt));
+  if (ghostOn < 0.01) { ghost.uCut.value = 0; return; }
+  camera.updateMatrixWorld();
+  renderer.getDrawingBufferSize(bufSize);
+  ghostV.set(walker.p.x, walker.p.y + 0.6, walker.p.z).applyMatrix4(camera.matrixWorldInverse);
+  const depth = -ghostV.z;
+  ghostV.set(walker.p.x, walker.p.y + 0.6, walker.p.z).project(camera);
+  ghost.uUnitPx.value.set((ghostV.x * 0.5 + 0.5) * bufSize.x, (ghostV.y * 0.5 + 0.5) * bufSize.y);
+  const focal = bufSize.y / (2 * Math.tan(camera.fov * Math.PI / 360));
+  ghost.uRadiusPx.value = Math.max(40, 2.4 * focal / Math.max(1, depth));
+  ghost.uUnitDepth.value = depth;
+  ghost.uCut.value = depth > 0 ? ghostOn : 0;
+}
+
+/* ---------- Loop ---------- */
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+let t0 = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - t0) / 1000); t0 = now;
+  if (lobbyOpen && !reduceMotion) yaw += dt * 0.08;   // the lobby's backdrop: a slow turn around the battlefield
+  stepWalker(dt);
+  updateCut();
+  if (flashTimer && now > flashTimer) { flashTimer = 0; $('status').textContent = falling ? 'Collapsing…' : ''; }
+
+  S.units.forEach((u, k) => {
+    const g = unitGroups[k];
+    if (!g) return;
+    const v = g.userData.vis;
+    if (k === sel) v.copy(walker.p);
+    else v.lerp(tmpV.set(u.x + 0.5, u.y, u.z + 0.5), 1 - Math.pow(0.0005, dt));
+    g.position.copy(v);
+  });
+  const sg = unitGroups[sel];
+  let dy = walker.face - sg.rotation.y;
+  dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+  sg.rotation.y += dy * (1 - Math.pow(0.0005, dt));
+  selRing.position.set(walker.p.x, walker.p.y + 0.04, walker.p.z);
+
+  updateFx(dt);
+  animateLoot(now);
+
+  const ox = Math.sin(yaw) * Math.cos(pitch), oy = Math.sin(pitch), oz = Math.cos(yaw) * Math.cos(pitch);
+  if (commander || fps) ghost.uCut.value = 0;
+  if (commander) {
+    stepCommander(dt);
+  } else if (fps) {
+    // First person: eyes of the selected unit, looking along the swipe direction.
+    camera.position.set(walker.p.x, walker.p.y + 0.85, walker.p.z);
+    camera.lookAt(camera.position.x - ox, camera.position.y - oy, camera.position.z - oz);
+    camTarget.copy(camera.position);
+  } else {
+    // Third person around the selected unit, always at the chosen distance. Blocks in the way turn see-through
+    // (ghost blocks, below); the camera is only lifted if it would end up inside the ground.
+    camTarget.lerp(tmpV.set(walker.p.x, walker.p.y + 0.9, walker.p.z), 1 - Math.pow(0.00005, dt));
+    camDist = dist;
+    camera.position.set(camTarget.x + ox * camDist, camTarget.y + oy * camDist, camTarget.z + oz * camDist);
+    const X = Math.floor(camera.position.x), Z = Math.floor(camera.position.z);
+    if (X >= 0 && X < W && Z >= 0 && Z < D) {
+      let top = 0;
+      for (let y = H - 1; y >= 0; y--) if (solidPoint(X + 0.5, y + 0.5, Z + 0.5)) { top = y + 1; break; }
+      if (camera.position.y < top + 0.6) camera.position.y = top + 0.6;
+    }
+    camera.lookAt(camTarget);
+  }
+  updateGhost(dt);
+  updateUnderground(dt);
+  unitGroups.forEach((g, k) => {
+    const u = S.units[k];
+    if (!u) return;
+    const cx = k === sel ? Math.floor(walker.p.x) : u.x, cy = k === sel ? Math.floor(walker.p.y + 1e-4) : u.y, cz = k === sel ? Math.floor(walker.p.z) : u.z;
+    g.userData.sprite.visible = !(fps && !commander && k === sel) && !hiddenCell(cx, cy, cz) && !inDark(g.position);
+  });
+  selRing.visible = !fps && !commander;
+  if (lobbyOpen) rangeTiles.visible = destTile.visible = selRing.visible = false;   // a clean backdrop behind the lobby
+  const targets = attackMode ? attackTargets() : [];
+  unitGroups.forEach((g, k) => {
+    if (k >= S.units.length) return;
+    const camAng = Math.atan2(camera.position.x - g.position.x, camera.position.z - g.position.z);
+    g.userData.sprite.rotation.y = camAng - g.rotation.y;
+    g.userData.hpBar.rotation.y = camAng - g.rotation.y;
+    g.userData.hpBar.visible = g.userData.sprite.visible;
+    const ring = atkRing(k);
+    ring.visible = targets.includes(k) && g.userData.sprite.visible;
+    if (ring.visible) ring.position.set(g.position.x, g.position.y + 0.05, g.position.z);
+  });
+  S.buildings.forEach((b, k) => { const v = buildingViews[k]; if (v) v.visible = !hiddenCell(b.x, b.y, b.z) && !inDark(v.position); });
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+resetWalker();
+camTarget.set(walker.p.x, walker.p.y + 0.9, walker.p.z);
+rebuildAll();
+showRange();
+refreshHud();
+requestAnimationFrame(frame);
+startOnline();
+// Debug only (file:// or ?debug): lets a test read the state and dig below the selected unit like a tap would.
+if (DEBUG) window.BW_DEBUG = {
+  state: () => S, sel: () => selUnit(), pending: () => pending, walkerY: () => walker.p.y,
+  digBelow() {                                   // the same steps as tapping the block under the unit in dig mode
+    const u = selUnit(), stay = pending[0] === u.x && pending[1] === u.y && pending[2] === u.z;
+    setMode('dig'); beginAction(S);
+    const ok = dig(S, u, u.x, u.y - 1, u.z);
+    if (stay) pending = [u.x, u.y, u.z];
+    rebuildChanged(); settle(); return ok;
+  },
+};
+})();
+</script>
+</body>
+</html>

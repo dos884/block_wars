@@ -279,11 +279,25 @@ function createMatch(kind, p0, p1) {
 }
 
 /* ---------- Routes ---------- */
+// The itch.io build runs in an iframe on itch's own domains and calls this API from there.
+const CORS_OK = /^https:\/\/([a-z0-9-]+\.)*(itch\.zone|itch\.io)$/;
+function cors(req, res) {
+  const origin = req.headers.origin;
+  if (!origin || !CORS_OK.test(origin)) return;
+  res.setHeader('access-control-allow-origin', origin);
+  res.setHeader('vary', 'origin');
+  res.setHeader('access-control-allow-methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('access-control-allow-headers', 'authorization, content-type');
+  res.setHeader('access-control-max-age', '86400');
+}
+
 async function handle(req, res) {
   const url = new URL(req.url, 'http://x');
   const parts = url.pathname.split('/').filter(Boolean);
   if (STATIC && parts[0] !== 'api') return serveStatic(url, res);
   if (parts[0] !== 'api') return send(res, 404, { error: 'not found' });
+  cors(req, res);
+  if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
   const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress).split(',')[0].trim();
   const now = Date.now(), route = req.method + ' ' + parts.slice(1, 3).join('/');
   const me = whoIs(req);
