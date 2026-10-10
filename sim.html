@@ -1268,6 +1268,7 @@ function tryAttack(cx, cy) {
   }
   const b = S.units[k];
   const hit = attack(S, u, b);
+  if (hit) countAct('attack');
   endAction(S);
   if (!hit) { refreshHud(); return; }
   spawnSmoke(b.x + 0.5, b.y + 0.7, b.z + 0.5);
@@ -1325,7 +1326,7 @@ function tryDig(cx, cy) {
   }
   const before = S.gold[S.team];
   const stay = !u.moved && pending[0] === u.x && pending[1] === u.y && pending[2] === u.z;
-  dig(S, u, ...c);
+  if (dig(S, u, ...c)) countAct('dig');
   if (stay) pending = [u.x, u.y, u.z];          // digging under your feet takes you down: the plan follows
   if (S.gold[S.team] > before) flash('+' + (S.gold[S.team] - before) + ' gold');
   rebuildChanged();
@@ -1445,6 +1446,7 @@ function renderBuildPanel() {
       if (falling || !canBuild(S, type) || !myTurn()) return;
       beginAction(S);
       const nu = buildUnit(S, type);
+      if (nu) countAct('build');
       endAction(S);
       toggleBuild(false);
       if (nu) flash(t.label + ' ready next turn');
@@ -1584,7 +1586,7 @@ function act(a) {
     if (u.moved || falling) return;
     const [x, y, z] = pending;
     beginAction(S);
-    if (moveUnit(S, u, x, y, z)) showRange();
+    if (moveUnit(S, u, x, y, z)) { showRange(); countAct('move'); }
     endAction(S);
   } else if (a === 'layerUp' || a === 'layerDown') {
     const cur = cut ? cut.y - 1 : H - 1;
@@ -1610,6 +1612,7 @@ function act(a) {
     beginAction(S);
     if (!u.moved && (pending[0] !== u.x || pending[1] !== u.y || pending[2] !== u.z)) moveUnit(S, u, ...pending);
     const ok = capture(S, u);
+    if (ok) countAct('capture');
     endAction(S);
     if (ok) flash(target.owner === u.team ? (target.kind === 'base' ? 'Base captured!' : 'Village captured: +' + INCOME + '/turn')
                                           : 'Capturing… ' + Math.max(0, target.cp) + ' left');
@@ -1619,6 +1622,7 @@ function act(a) {
   } else if (a === 'undo' || a === 'redo') {
     if (falling) return;
     if (!(a === 'undo' ? undo(S) : redo(S))) { flash(a === 'undo' ? 'Nothing to undo' : 'Nothing to redo'); refreshHud(); return; }
+    countAct(a);
     hiddenLoot.clear();
     syncUnitGroups();
     rebuildChanged();
@@ -1728,7 +1732,12 @@ function flushEvents() {
   fetch(API_BASE + '/api/events', { method: 'POST', keepalive: true,
     headers: { 'content-type': 'application/json', authorization: 'Bearer ' + me.token }, body: JSON.stringify({ events }) }).catch(() => {});
 }
-setInterval(flushEvents, 10000);
+// Hot-seat activity: count actions and send one summary every 10 s (only when something happened).
+let hsActs = {};
+function countAct(kind) { if (!NET.id) hsActs[kind] = (hsActs[kind] || 0) + 1; }
+function summarizeActs() { if (Object.keys(hsActs).length) { track('hotseat_acts', hsActs); hsActs = {}; } }
+setInterval(() => { summarizeActs(); flushEvents(); }, 10000);
+document.addEventListener('visibilitychange', () => { if (document.hidden) { summarizeActs(); flushEvents(); } });
 document.addEventListener('visibilitychange', () => { if (document.hidden) flushEvents(); });
 function shareTokenWithWorker() {
   if (!('caches' in window) || !me.token) return;

@@ -19,6 +19,8 @@ const ok = (cond, msg) => { console.log((cond ? 'ok   ' : 'FAIL ') + msg); if (!
   const errors = [];
   const open = async () => {
     const ctx = await browser.newContext({ viewport: { width: 412, height: 860 }, hasTouch: true });   // a phone-sized screen
+    // The notification dialog counts as already answered, so it never covers buttons mid-test.
+    await ctx.addInitScript(() => { try { localStorage.setItem('bw:notifyAsked', JSON.stringify(Date.now())); } catch {} });
     const p = await ctx.newPage();
     p.on('pageerror', e => errors.push(e.message));
     return p;
@@ -95,8 +97,7 @@ const ok = (cond, msg) => { console.log((cond ? 'ok   ' : 'FAIL ') + msg); if (!
     ok((await red.textContent('#lGames .game')).includes('Their turn') && (await red.textContent('#lGames .game')).includes('Blue Tester'),
       `Red's lobby: "${(await red.textContent('#lGames .game')).trim()}"`);
 
-    // Quick play between two strangers: the first waits, the second is paired, both land in the match.
-    // Not on the live site: the test players could get paired with a real person waiting there.
+    // Two more players in a fresh friend game (Quick play is off for now): seats, then quitting.
     if (!process.env.SITE) {
     await red.screenshot({ path: path.join(__dirname, 'out', 'lobby.png') });
     // Close the friend-game tabs first: five 3D tabs at once is too much for software rendering on the server.
@@ -104,11 +105,13 @@ const ok = (cond, msg) => { console.log((cond ? 'ok   ' : 'FAIL ') + msg); if (!
     const q1 = await open(), q2 = await open();
     await q1.goto(site + '/'); await q2.goto(site + '/');
     for (const p of [q1, q2]) await p.waitForFunction(() => document.getElementById('lName').value.length > 0, null, { timeout: 15000 });
-    await q1.click('#lQuick');
-    ok(await q1.waitForSelector('#lSearch:not([hidden])', { timeout: 5000 }).then(() => true, () => false), 'quick play: first player is looking');
-    await q2.click('#lQuick');
-    await Promise.all([q1.waitForURL(/\?m=/, { timeout: 30000 }), q2.waitForURL(/\?m=/, { timeout: 30000 })]);
-    ok(q1.url() === q2.url(), 'quick play: both players land in the same match');
+    ok(!(await q1.isVisible('#lQuick')) && (await q1.textContent('#lLocal')) === 'Play yourself', 'lobby: no Quick play, "Play yourself"');
+    await q1.click('#lFriend');
+    await q1.waitForURL(/\?m=/); await q1.waitForSelector('#shareView:not([hidden])');
+    const link2 = await q1.inputValue('#shareLink'); await q1.click('#shareClose');
+    await q2.goto(link2.replace(/^https?:\/\/[^/]+/, site));
+    await q2.waitForSelector('#joinView:not([hidden])', { timeout: 15000 }); await q2.click('#joinYes');
+    ok(await waitLine(q2, 'You are Red'), 'second friend game: Red joins');
     ok(await waitLine(q1, 'You are') && await waitLine(q2, 'You are'), `seated: "${await line(q1)}" / "${await line(q2)}"`);
     for (const p of [q1, q2]) {                // each player looks at their own army from the start
       const mine = (await line(p)).includes('Blue') ? '59, 130, 196' : '224, 69, 58';
