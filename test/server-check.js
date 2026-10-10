@@ -63,10 +63,6 @@ function vapidValid(auth, publicKey) {
     const submit = k => api('POST', `${url}/turns`, { n: k, ...turns[k] }, who(k));
     ok((await api('POST', `${url}/turns`, { n: 0, ...turns[0] }, red)).status === 409, 'Red cannot play Blue\'s turn');
     ok((await api('POST', `${url}/turns`, { n: 0, ...turns[0] }, eve)).status === 403, 'a stranger cannot play');
-    const cheat = JSON.parse(JSON.stringify(turns[0])); cheat.groups[1][0].x += 9;
-    ok((await api('POST', `${url}/turns`, { n: 0, ...cheat }, blue)).status === 422, 'illegal move refused');
-    const lie = await api('POST', `${url}/turns`, { n: 0, ...turns[0], hash: 'deadbeef' }, blue);
-    ok(lie.status === 422 && /desync/.test(lie.error), 'wrong hash refused');
 
     // Red subscribes to pushes; Blue's turn should reach Red's (fake) push service, properly signed.
     const { vapidKey } = await api('GET', '/config');
@@ -77,7 +73,7 @@ function vapidValid(auth, publicKey) {
     const { rev } = await api('GET', url, null, red);
     const poll = api('GET', `${url}?since=0&rev=${rev}`, null, red);       // Red is watching the match…
     await new Promise(r => setTimeout(r, 300));
-    ok((await submit(0)).status === 200, 'turn 0 accepted (after the refused ones)');
+    ok((await submit(0)).status === 200, 'turn 0 accepted');
     const got = await poll;
     ok(got.turns.length === 1 && got.turns[0].hash === turns[0].hash, 'long-poll delivers the new turn');
     await new Promise(r => setTimeout(r, 300));
@@ -110,6 +106,18 @@ function vapidValid(auth, publicKey) {
     ok(!(await api('POST', '/quick', null, b)).match, 'nobody else waiting: the next search waits');
     await api('DELETE', '/quick', null, b);
     ok(!(await api('GET', '/me', null, b)).searching, 'stop looking');
+
+    // Relay (the default): bad turns are passed on; the receiving browser reports a desync and the game stops.
+    const r1 = await player(), r2 = await player();
+    const rm = await api('POST', '/matches', null, r1); await api('POST', `/matches/${rm.id}/join`, null, r2);
+    ok(!(await api('GET', `/matches/${rm.id}`)).verified, 'new matches are relays');
+    const bad = JSON.parse(JSON.stringify(turns[0])); bad.groups[1][0].x += 9;
+    ok((await api('POST', `/matches/${rm.id}/turns`, { n: 0, ...bad }, r1)).status === 200, 'relay: an illegal turn is passed on (the browser catches it)');
+    ok((await api('POST', `/matches/${rm.id}/desync`, { n: 0, reason: 'illegal action' }, r2)).ok, 'relay: the opponent reports the desync');
+    const rv = await api('GET', `/matches/${rm.id}?since=0`, null, r1);
+    ok(rv.desync === 0, 'relay: the match shows it is out of sync at turn 0');
+    ok((await api('POST', `/matches/${rm.id}/turns`, { n: 1, ...turns[1] }, r2)).status === 409, 'relay: no more turns after a desync');
+    ok((await api('POST', `/matches/${rm.id}/desync`, { n: 0 }, eve)).status === 403, 'relay: strangers cannot report desyncs');
 
     // Quitting: the other side wins, the game takes no more turns; an unjoined invite is just cancelled.
     const qurl = `/matches/${pair.match}`;
