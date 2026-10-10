@@ -159,6 +159,17 @@ body.lobby #hud, body.lobby #controls, body.lobby #layers{display:none}
 .lrow .btn{height:64px;font-size:17px}
 #lFriend{background:var(--cmd);color:#22303b}
 #lQuick[hidden]{display:none}
+.kofi{display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;font-weight:800}
+.lkofi{height:46px;font-size:16px;padding:0 18px;box-shadow:0 3px 0 var(--ink)}
+/* While you wait for the opponent's turn, the controls make room for a thank-you and a Ko-fi button. */
+#waitPanel{display:none;pointer-events:auto;margin:0 auto;width:min(100%,460px);background:var(--panel);border:2px solid var(--ink);
+  border-radius:18px;padding:14px 16px;flex-direction:column;align-items:center;gap:10px;text-align:center;
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+body.waiting #waitPanel{display:flex}
+body.waiting #controls .leftpad, body.waiting #controls .cgrid{display:none}
+#waitName{font-size:18px;font-weight:800}
+#waitPanel .sub{font-size:14px;color:var(--muted);font-weight:600}
+.bigkofi{height:62px;font-size:19px;padding:0 26px;background:var(--cmd);color:#22303b;width:100%;max-width:340px}
 #lSearch{text-align:center;font-weight:800;display:flex;flex-direction:column;gap:6px;align-items:center}
 #lSearch[hidden]{display:none}
 #lSearch .sub{font-weight:600;font-size:13px;color:var(--muted)}
@@ -279,6 +290,7 @@ body.lobby #hud, body.lobby #controls, body.lobby #layers{display:none}
     <div class="lh">Your games</div>
     <div id="lGames"><div class="lempty">No games yet.</div></div>
     <div class="lfoot">
+      <a class="btn kofi lkofi" href="https://ko-fi.com/shmooti" target="_blank" rel="noopener">☕ Support Cube Wars</a>
       <button class="btn" id="lNotify" hidden>🔔 Tell me when it's my turn</button>
       <div id="lPushNote" hidden></div>
       <div id="gsi"></div>
@@ -338,6 +350,11 @@ body.lobby #hud, body.lobby #controls, body.lobby #layers{display:none}
 </div>
 
 <div id="controls">
+  <div id="waitPanel" role="status">
+    <div id="waitName">Waiting for your opponent…</div>
+    <div class="sub">Enjoying Cube Wars? A coffee helps keep it going.</div>
+    <a class="btn kofi bigkofi" href="https://ko-fi.com/shmooti" target="_blank" rel="noopener">☕ Support on Ko-fi</a>
+  </div>
   <div class="leftpad">
     <div id="unitsPanel" hidden></div>
     <div class="selrow">
@@ -1474,6 +1491,13 @@ function refreshHud() {
     $('winAgain').textContent = unsent ? 'Send' : 'Main menu';
   }
   netLine();
+  // Online and it's the opponent's turn: show the waiting panel instead of the controls.
+  const waiting = !!NET.id && NET.team >= 0 && S.team !== NET.team && winnerNow() < 0 && NET.desync < 0;
+  if (waiting !== document.body.classList.contains('waiting')) {
+    document.body.classList.toggle('waiting', waiting);
+    if (waiting) { toggleUnits(false); toggleBuild(false); }
+  }
+  if (waiting) $('waitName').textContent = 'Waiting for ' + (oppName() || 'your opponent') + '…';
   if (!$('unitsPanel').hidden) renderUnitsPanel();
 }
 
@@ -2337,6 +2361,21 @@ startOnline();
 // Debug only (file:// or ?debug): lets a test read the state and dig below the selected unit like a tap would.
 if (DEBUG) window.BW_DEBUG = {
   state: () => S, sel: () => selUnit(), pending: () => pending, walkerY: () => walker.p.y,
+  // Stage a scene (screenshots, tests): fn(S, BlockSim) changes the world as one action, then the view catches up.
+  act(fn) {
+    beginAction(S); fn(S, BlockSim); rebuildChanged();
+    syncUnitGroups(); S.units.forEach((u, k) => { if (k !== sel) unitGroups[k].userData.vis.set(u.x + 0.5, u.y, u.z + 0.5); });
+    settle();
+  },
+  select(k) { selectUnit(k); },
+  atlas: () => atlasTex.image.toDataURL('image/png'),      // the generated block textures, 32x32 per tile
+  // Point the Commander camera from (px,py,pz) at (tx,ty,tz).
+  cam(px, py, pz, tx, ty, tz) {
+    if (!commander) act('commander');
+    cmd.p.set(px, py, pz);
+    const d = new THREE.Vector3(tx - px, ty - py, tz - pz).normalize();
+    cmd.yaw = Math.atan2(-d.x, -d.z); cmd.pitch = Math.asin(d.y);
+  },
   digBelow() {                                   // the same steps as tapping the block under the unit in dig mode
     const u = selUnit(), stay = pending[0] === u.x && pending[1] === u.y && pending[2] === u.z;
     setMode('dig'); beginAction(S);

@@ -52,6 +52,9 @@ Sim details:
 - In-turn actions stay local (undo/redo). End turn sends the turn's action groups + hash (+ whether it won).
 - Logins stay on the device (recovery codes were tried and dropped 2026-10-10). Google link is the way to move devices once set up.
 - No Elo. Monetization: donations/cosmetics, no ads in gameplay. Closed source for now.
+- Donations: Ko-fi (https://ko-fi.com/shmooti): a button in the lobby, and a big one in the panel that replaces the controls while you wait for the opponent's turn.
+- itch.io is DROPPED (2026-10-10: friend invites didn't work from inside itch). The `itch/` folder, `tools/build-itch.js` and the server's itch CORS stay in place but are unused; don't maintain them.
+- Quick play is switched off for now (`QUICK_PLAY = false` in sim.html; server code kept). Lobby buttons: Play a friend, Play yourself.
 - Modding later: sandboxed interpreter (QuickJS or Lua in WASM), API = primitives + action registry + events.
 
 ## Server & hosting (this machine: Linode VPS 172.236.247.113, 4 cores, 8 GB)
