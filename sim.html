@@ -110,8 +110,20 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:
 .nextbtn{height:48px;min-width:0;font-size:16px;padding:0 10px}
 .unitsbig{height:56px;min-width:0;font-size:17px;padding:0 10px}
 #unitsPanel{top:auto;bottom:calc(100% + 10px)}
-#buildPanel{position:absolute;bottom:calc(100% + 10px);left:0;display:flex;flex-direction:column;gap:6px;min-width:210px;z-index:5}
+#buildPanel{position:fixed;inset:0;z-index:12;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px}
 #buildPanel[hidden]{display:none}
+.bsheet{max-width:380px;max-height:calc(100vh - 32px);overflow-y:auto}
+.bhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#buildClose{appearance:none;border:2px solid var(--ink);background:var(--btn);color:var(--ink);font:inherit;font-weight:800;font-size:18px;
+  width:40px;height:40px;border-radius:12px;cursor:pointer;flex:none}
+#buildList{display:flex;flex-direction:column;gap:8px}
+.brow{display:flex;align-items:center;gap:12px;padding:8px 12px;height:auto;min-height:60px;text-align:left;font-size:16px;box-shadow:0 3px 0 var(--ink)}
+.brow img{width:34px;height:auto;image-rendering:pixelated;flex:none}
+.brow .bname{flex:1}
+.brow .sub{font-size:14px;font-weight:800}
+#placeMenu{position:absolute;bottom:calc(100% + 10px);right:0;z-index:5;display:flex;flex-direction:column;gap:6px;min-width:190px}
+#placeMenu[hidden]{display:none}
+#placeMenu .btn{height:48px;font-size:15px;box-shadow:0 3px 0 var(--ink);padding:0 12px;text-align:left}
 #winView{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:8;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#fff;text-align:center;padding:16px}
 #winView[hidden]{display:none}
 #winText{font-size:34px;font-weight:800}
@@ -203,7 +215,6 @@ body.waiting #controls .leftpad, body.waiting #controls .cgrid{display:none}
 .cbtn.confirm{height:auto;font-size:13px}
 .cbtn[hidden]{display:none}
 #acount{display:block;font-size:10px;font-weight:800;color:var(--muted);margin-top:1px}
-#buildPanel{left:auto;right:0}
 .joy{position:relative;width:128px;height:128px;border-radius:50%;border:2px solid var(--ink);background:var(--panel);
   touch-action:none;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);transition:opacity .15s}
 .joy .knob{position:absolute;width:52px;height:52px;border-radius:50%;background:var(--cmd);border:2px solid var(--ink);left:36px;top:36px;pointer-events:none}
@@ -342,6 +353,12 @@ body.waiting #controls .leftpad, body.waiting #controls .cgrid{display:none}
 </div>
 
 <div id="toast" role="status" hidden></div>
+<div id="buildPanel" hidden>
+  <div class="msheet bsheet" role="dialog" aria-modal="true" aria-labelledby="buildTitle">
+    <div class="bhead"><div class="mtitle" id="buildTitle">Build a unit</div><button id="buildClose" aria-label="Close">✕</button></div>
+    <div id="buildList"></div>
+  </div>
+</div>
 <div id="tut" role="status" hidden>
   <div id="tutText"></div>
   <div class="tutfoot"><span id="tutStep"></span><span><button id="tutSkip">Skip tutorial</button> <button class="tutok" id="tutOk" hidden>Got it</button></span></div>
@@ -401,11 +418,15 @@ body.waiting #controls .leftpad, body.waiting #controls .cgrid{display:none}
     <div id="joy" class="joy" role="application" aria-label="Move: drag to walk the selected unit, let go to stop on a tile"><div class="knob"></div></div>
   </div>
   <div class="cgrid">
-    <div id="buildPanel" hidden></div>
+    <div id="placeMenu" hidden>
+      <button class="btn" data-place="stone">🧱 Stone block · 25 gold</button>
+      <button class="btn" data-place="ladder">🪜 Ladder · 10 gold</button>
+    </div>
     <button class="btn cbtn" data-act="up" aria-label="Fly one block higher" hidden>▲ Up</button>
     <button class="btn cbtn" data-act="down" aria-label="Fly one block lower" hidden>▼ Down</button>
     <button class="btn cbtn dig" data-act="attack" aria-pressed="false">Attack</button>
     <button class="btn cbtn dig" data-act="dig" aria-pressed="false">Dig</button>
+    <button class="btn cbtn dig" data-act="place" aria-pressed="false" hidden>Place ▴</button>
     <button class="btn cbtn" data-act="capture">Capture</button>
     <button class="btn cbtn" id="buildBtn" aria-haspopup="true" aria-expanded="false" aria-controls="buildPanel">Build ▴</button>
     <button class="btn cbtn" data-act="undo" aria-label="Undo last action">↶ Undo<span id="acount">0</span></button>
@@ -429,7 +450,7 @@ const {
   TEAM_NAMES, TEAM_COLORS, TYPES, UNIT_TYPES,
   idx, inGrid, mix, unitName, cellKey, newState, stateHash,
   stepTo, stepsFrom, moveOf, moveRange, moveUnit, canDig, digTool, dig, canAttack, attack, hasLadder, climbsLadders,
-  canCapture, capture, canBuild, buildUnit, incomeOf, costOf, flies, typesFor,
+  canCapture, capture, canBuild, buildUnit, incomeOf, costOf, flies, typesFor, canPlace, place, placeCost,
   beginAction, endAction, undo, redo, endTurn, gravityStep, waterStep, turnGroups, replayTurn, runGroup,
 } = BlockSim;
 
@@ -1186,6 +1207,7 @@ function updateButtons() {
   show('down', own && flies(S, u) && !u.moved);
   show('attack', own && (attackMode || attackTargets().length > 0));
   show('dig', own && digTool(S, u) !== 'none');
+  show('place', own && u.type === 'builder' && placeCost(S, 'stone') !== undefined);
   show('capture', own && !!captureTarget());
   show('confirm', planned);
   show('redo', S.cursor < S.history.length);
@@ -1241,6 +1263,7 @@ scene.add(destTile);
 let range = new Map();
 let rangeKeys = [];
 let digMode = false;
+let placeMode = null;                               // 'stone' | 'ladder' while the builder is placing
 let attackMode = false;
 // Dig reach: a faint red box around the unit showing how far it can dig.
 const reachBox = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(7, 7, 7)),
@@ -1608,6 +1631,12 @@ function tryAttack(cx, cy) {
 function setMode(m) {
   digMode = m === 'dig';
   attackMode = m === 'attack';
+  placeMode = m === 'place' ? placeMode || 'stone' : null;
+  const pl = document.querySelector('[data-act="place"]');
+  if (pl) {
+    pl.classList.toggle('on', !!placeMode); pl.setAttribute('aria-pressed', String(!!placeMode));
+    pl.textContent = placeMode ? (placeMode === 'stone' ? 'Stone ✓' : 'Ladder ✓') : 'Place ▴';
+  }
   const d = document.querySelector('[data-act="dig"]'), at = document.querySelector('[data-act="attack"]');
   d.classList.toggle('on', digMode); d.setAttribute('aria-pressed', String(digMode));
   d.textContent = digMode ? 'Dig ✓' : 'Dig';
@@ -1633,6 +1662,33 @@ function blockFromTap(cx, cy) {
   raycaster.setFromCamera(ndc, camera);
   const h = raycaster.intersectObjects(chunkMeshes, false)[0];
   return h ? hitCell(h) : null;
+}
+// Placing (rules 8): the empty cell next to the tapped block face gets a stone block or a ladder.
+function tryPlace(cx, cy) {
+  const u = selUnit();
+  if (falling || !myTurn() || !placeMode) return;
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const h = raycaster.intersectObjects(chunkMeshes, false)[0];
+  if (!h) return;
+  const [bx, by, bz] = hitCell(h), n = h.face.normal;
+  const c = [bx + Math.round(n.x), by + Math.round(n.y), bz + Math.round(n.z)];
+  beginAction(S);                               // like digging: a planned move is confirmed first
+  if (!u.moved && (pending[0] !== u.x || pending[1] !== u.y || pending[2] !== u.z)) {
+    if (!moveUnit(S, u, ...pending)) { pending = [u.x, u.y, u.z]; flash('Planned move cancelled'); }
+  }
+  if (!canPlace(S, u, placeMode, ...c)) {
+    const cost = placeCost(S, placeMode);
+    flash(S.gold[S.team] < cost ? 'Not enough gold (' + cost + ')'
+      : Math.max(Math.abs(c[0] - u.x), Math.abs(c[1] - u.y), Math.abs(c[2] - u.z)) > 3 ? 'Too far: within 3 blocks'
+      : placeMode === 'ladder' ? 'A ladder needs a wall next to it' : "Can't place there");
+    endAction(S); refreshHud();
+    return;
+  }
+  if (place(S, u, placeMode, ...c)) { countAct('place'); playAnim(sel, 'dig', c[0] + 0.5, c[2] + 0.5); }
+  rebuildChanged();
+  settle();
 }
 function tryDig(cx, cy) {
   const u = selUnit();
@@ -1762,13 +1818,15 @@ function selectUnit(k) {
 
 /* ---------- Build panel (your base) ---------- */
 function renderBuildPanel() {
-  const panel = $('buildPanel');
+  const panel = $('buildList');
   panel.innerHTML = '';
+  $('buildTitle').textContent = 'Build a unit · ' + S.gold[S.team] + ' gold';
   for (const type of typesFor(S)) {
     const t = UNIT_TYPES[type], b = document.createElement('button');
-    b.className = 'btn urow';
+    b.className = 'btn brow';
     b.disabled = !canBuild(S, type) || !myTurn();
-    b.innerHTML = '<span class="dot" style="background:' + hex(TEAM_COLORS[S.team]) + '"></span>' + t.label + '<span class="sub">' + costOf(S, type) + ' gold</span>';
+    const pic = unitTexture(type, S.team, type === 'screw' ? 0 : 'idle').image.toDataURL();
+    b.innerHTML = '<img alt="" src="' + pic + '"><span class="bname">' + t.label + '</span><span class="sub">' + costOf(S, type) + ' gold</span>';
     b.addEventListener('pointerdown', e => {
       e.preventDefault();
       if (falling || !canBuild(S, type) || !myTurn()) return;
@@ -1776,7 +1834,7 @@ function renderBuildPanel() {
       const nu = buildUnit(S, type);
       if (nu) countAct('build');
       endAction(S);
-      if (!typesFor(S).some(t => canBuild(S, t))) toggleBuild(false);   // keep the menu open while you can build more
+      toggleBuild(false);
       if (nu) flash(t.label + ' ready next turn');
       refreshHud();
     });
@@ -1789,7 +1847,7 @@ function toggleBuild(open) {
   panel.hidden = !show;
   btn.setAttribute('aria-expanded', String(show));
   btn.textContent = show ? 'Build ▾' : 'Build ▴';
-  if (show) { toggleUnits(false); renderBuildPanel(); }
+  if (show) { toggleUnits(false); $('placeMenu').hidden = true; renderBuildPanel(); }
 }
 // Capture from where the unit is, or where it will be once its planned move is confirmed.
 function captureTarget() {
@@ -1909,7 +1967,7 @@ function ballBlocked(x, y, z, r) {
 }
 
 /* ---------- Actions ---------- */
-const PLAY_ACTS = new Set(['confirm', 'capture', 'undo', 'redo', 'endturn', 'dig', 'attack', 'up', 'down']);
+const PLAY_ACTS = new Set(['confirm', 'capture', 'undo', 'redo', 'endturn', 'dig', 'attack', 'up', 'down', 'place']);
 function act(a) {
   const u = selUnit();
   if (PLAY_ACTS.has(a) && !myTurn()) { flash(NET.sending ? 'Sending your turn…' : 'Not your turn'); refreshHud(); return; }
@@ -1982,6 +2040,9 @@ function act(a) {
     const t = [pending[0], pending[1] + (a === 'up' ? 1 : -1), pending[2]];
     if (range.has(cellKey(...t))) { pending = t; showRange(); }
     else flash(a === 'up' ? "Can't fly higher here" : "Can't fly lower here");
+  } else if (a === 'place') {                     // builder: open the little menu (or stop placing)
+    if (placeMode) { setMode(null); $('placeMenu').hidden = true; }
+    else { toggleBuild(false); $('placeMenu').hidden = !$('placeMenu').hidden; }
   } else if (a === 'dig') {
     setMode(digMode ? null : 'dig');
   } else if (a === 'attack') {
@@ -2650,6 +2711,14 @@ document.querySelectorAll('[data-act]').forEach(el => {
 });
 $('unitsBtn').addEventListener('pointerdown', e => { e.preventDefault(); toggleBuild(false); toggleUnits(); });
 $('buildBtn').addEventListener('pointerdown', e => { e.preventDefault(); toggleBuild(); });
+$('buildClose').addEventListener('click', () => toggleBuild(false));
+$('buildPanel').addEventListener('pointerdown', e => { if (e.target === $('buildPanel')) toggleBuild(false); });
+document.querySelectorAll('[data-place]').forEach(b => b.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  $('placeMenu').hidden = true;
+  placeMode = b.dataset.place; setMode('place');
+  flash('Tap a block face: the ' + (placeMode === 'stone' ? 'stone' : 'ladder') + ' goes next to it');
+}));
 $('winUndo').addEventListener('click', () => act('undo'));
 $('winAgain').addEventListener('click', () => {
   if (!NET.id) $('reset').dispatchEvent(new PointerEvent('pointerdown'));
@@ -2837,6 +2906,7 @@ canvas.addEventListener('pointerup', e => {
     if (!$('unitsPanel').hidden || !$('buildPanel').hidden) { toggleUnits(false); toggleBuild(false); tap = null; return; }
     if (attackMode) tryAttack(e.clientX, e.clientY);
     else if (digMode) tryDig(e.clientX, e.clientY);
+    else if (placeMode) tryPlace(e.clientX, e.clientY);
     else {
       let c = cellFromTap(e.clientX, e.clientY);
       if (!c || !range.has(cellKey(...c))) c = snapTile(e.clientX, e.clientY);

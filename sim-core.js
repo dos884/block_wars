@@ -221,7 +221,10 @@ RULES[5] = {
 RULES[6] = { ...RULES[5], goldLayout: 'grid' };
 //  7: no limit on units built per turn: as many as your gold allows; extra ones appear next to the base.
 RULES[7] = { ...RULES[6], unlimitedBuild: true };
-const LATEST_RULES = 7;
+//  8: builders can place a stone block (25 gold) or a ladder (10 gold) in an empty cell within reach (3), as many as
+//     they can pay for. Stone follows the usual support physics; a ladder needs a block next to it (sideways).
+RULES[8] = { ...RULES[7], place: { stone: 25, ladder: 10 } };
+const LATEST_RULES = 8;
 // Flying (rules 5+): which units fly, which can hit a flyer, and how high a flyer hovers over a column.
 const flies = (s, u) => !!UNIT_TYPES[u.type].flies && !!RULES[s.rules || 1].flyer;
 const hitsFlyers = type => type === 'archer' || type === 'spearman' || type === 'screw';
@@ -542,6 +545,28 @@ function canDig(s, u, x, y, z) {
   if (tool === 'none' || (tool === 'soft' && !SOFT[m])) return false;
   return Math.max(Math.abs(x - u.x), Math.abs(y - u.y), Math.abs(z - u.z)) <= DIG_REACH;
 }
+// Placing (rules 8): what a builder can put where, and what it costs.
+const placeCost = (s, what) => ((RULES[s.rules || 1].place || {})[what]);
+function canPlace(s, u, what, x, y, z) {
+  const cost = placeCost(s, what);
+  if (cost === undefined || u.dead || u.type !== 'builder' || u.team !== s.team || s.gold[s.team] < cost) return false;
+  if (!inGrid(x, y, z) || y < 1 || s.g[idx(x, y, z)] !== AIR || unitAt(s, x, y, z)) return false;
+  if (Math.max(Math.abs(x - u.x), Math.abs(y - u.y), Math.abs(z - u.z)) > DIG_REACH) return false;
+  if (what === 'ladder') {
+    if (hasLadder(s, x, y, z)) return false;
+    return [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => solidAt(s, x + dx, y, z + dz));
+  }
+  return true;
+}
+function place(s, u, what, x, y, z) {
+  if (!canPlace(s, u, what, x, y, z)) return false;
+  if (what === 'stone') setCell(s, idx(x, y, z), STONE);
+  else addLadder(s, idx(x, y, z));
+  s.gold[s.team] -= placeCost(s, what);
+  s.moves++;
+  record(s, { t: 'place', u: u.id, what, x, y, z });
+  return true;
+}
 function dig(s, u, x, y, z) {
   if (!canDig(s, u, x, y, z)) return false;
   const m = s.g[idx(x, y, z)];
@@ -675,6 +700,11 @@ function runAct(s, a) {
   if (a.t === 'build') return TYPES.includes(a.type) && !!buildUnit(s, a.type);
   if (!isInt(a.u, 0, s.units.length - 1)) return false;
   const u = s.units[a.u];
+  if (a.t === 'place') {
+    if (a.what !== 'stone' && a.what !== 'ladder') return false;
+    if (!isInt(a.x, 0, W - 1) || !isInt(a.y, 1, H - 1) || !isInt(a.z, 0, D - 1)) return false;
+    return place(s, u, a.what, a.x, a.y, a.z);
+  }
   if (a.t === 'move' || a.t === 'dig') {
     if (!isInt(a.x, -1, W) || !isInt(a.y, -1, H + 4) || !isInt(a.z, -1, D)) return false;
     return a.t === 'move' ? moveUnit(s, u, a.x, a.y, a.z) : dig(s, u, a.x, a.y, a.z);
@@ -688,7 +718,7 @@ function runGroup(s, acts) {
   if (!Array.isArray(acts) || !acts.length || acts.length > 4) return false;
   beginAction(s);
   let ok = true, dug = false;
-  for (const a of acts) { if (!runAct(s, a)) { ok = false; break; } if (a.t === 'dig') dug = true; }
+  for (const a of acts) { if (!runAct(s, a)) { ok = false; break; } if (a.t === 'dig' || (a.t === 'place' && a.what === 'stone')) dug = true; }
   if (ok && dug) resolve(s);
   endAction(s);
   return ok;
@@ -985,7 +1015,7 @@ const BlockSim = {
   TEAM_NAMES, TEAM_COLORS, TYPES, UNIT_TYPES, DAMAGE, RULES, LATEST_RULES, damageOf,
   idx, inGrid, mix, unitName, cellKey, newState, stateHash,
   solidAt, unitAt, stepTo, stepsFrom, moveOf, moveRange, moveUnit, canDig, digTool, dig, canAttack, attack, hasLadder, climbsLadders,
-  canCapture, capture, canBuild, buildUnit, incomeOf, costOf, flies, flyY, typesFor,
+  canCapture, capture, canBuild, buildUnit, incomeOf, costOf, flies, flyY, typesFor, canPlace, place, placeCost,
   beginAction, endAction, undo, redo, endTurn, gravityStep, waterStep, resolve,
   turnGroups, runGroup, replayTurn, finishTurn, MAX_GROUPS,
 };
