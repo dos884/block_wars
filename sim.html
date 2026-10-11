@@ -2212,7 +2212,7 @@ const TUT = [
   { text: 'Drag the joystick (or tap a blue tile) to move your soldier.', pulse: '#joy',
     done: () => { const u = selUnit(); return u.moved || (pending && (pending[0] !== u.x || pending[2] !== u.z)); } },
   { text: 'Tap Confirm to finish the move.', pulse: '[data-act="confirm"]', done: () => tut.saw.move },
-  { text: 'Builders dig and mine gold. Tap Next (or Units) until your Builder is selected.', pulse: '[data-act="next"]',
+  { text: 'Builders dig and mine gold. Tap Next (or the Units button) until your Builder is selected.', pulse: '[data-act="next"]',
     done: () => selUnit().type === 'builder' },
   { text: 'Tap Dig, then tap the block under your builder. Gold sits 3 to 7 blocks down.', pulse: '[data-act="dig"]', done: () => tut.saw.dig },
   { text: "Tap End turn. Then it's the bot's move.", pulse: '[data-act="endturn"]', done: () => S.team === BOT || S.turn > 1 },

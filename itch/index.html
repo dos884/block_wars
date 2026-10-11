@@ -814,6 +814,49 @@ const KNIGHT = [
   "....KK.KK........KK.KK......",
   "............................"
 ];
+// The knight charging: the same rider with the lance lowered (the attack frame).
+const KNIGHT_DIP = [
+  "...........UU...............",
+  "..........UUUU..............",
+  ".........HhhhhH.............",
+  ".........HhhHHH.............",
+  ".........HHHHHH.............",
+  ".........HEEHEE.............",
+  ".........HHHHHH.............",
+  ".........HHHHHH.......R.....",
+  "..........MMMM.......AR.....",
+  ".........uUUUUu.....ARRRR...",
+  "......MMMMUUUUu....UARRERR..",
+  "......MUUMUUUUUUSS.UURRRRRMM",
+  "......MUUMUUWWWWWWWWWWWWWWWM",
+  "......MUUMUUUUu....ARRRRRRMM",
+  "......MUUMUUUUu....ARRRRrrrr",
+  ".......MM.UUUUu...ARRRRR....",
+  ".......MMuUUUUu...ARRRRR....",
+  ".........BBBBBB..ARRRRR.....",
+  "........BB.PPPP..ARRRRR.....",
+  "........BBBPPPP..ARRRRR.....",
+  ".....RuUUUUUUPPUuRRRRR......",
+  "...ARRuUUUUUUPPUuRRRRR......",
+  "..ARRRuUUUUUUPPUuRRRRR......",
+  ".A.RRRuUUUUUUPPUuRRRR.......",
+  ".A.RRRuUUUUUUKKKuRRRR.......",
+  ".A.RRRuUUUUUUKKKuRRRR.......",
+  ".A.RRRuUUUUUUUUUuRRRR.......",
+  "..A.RRuUUUUUUUUUuRRRR.......",
+  ".A...ruUUUUUUUUUurrr........",
+  "..A.rruUUUUUUUUUurr.RR......",
+  ".A..rruUuuUuuUuuurr.RR......",
+  "....rr.RR........rr.RR......",
+  "....rr.RR........rr.RR......",
+  "....rr.rR........rr.rR......",
+  "....rr.RR........rr.RR......",
+  "....rr.RR........rr.RR......",
+  "....rr.RR........rr.RR......",
+  "....KK.KK........KK.KK......",
+  "....KK.KK........KK.KK......",
+  "............................"
+];
 // Weapon pixels per type: [x, y, palette key] drawn over the body.
 const WEAPON = {
   soldier:  [[12, 4, 'M'], [12, 5, 'M'], [12, 6, 'M'], [12, 7, 'M'], [12, 8, 'M'], [12, 9, 'M'], [11, 10, 'B'], [12, 10, 'B'], [13, 10, 'B'], [12, 11, 'B']],
@@ -897,16 +940,68 @@ const SCREW = [
   "....................................",
   "...................................."
 ];
+// The screw's sail turning: 8 frames of rows 6-48 (the spiral turned 1/8 more each frame; frame 0 = SCREW).
+const SCREW_SAIL = [
+  ["................LLL.................", "..............LLLLLYY...............", ".............lLLLLYYk...............", "............lLLYYYZkkkk.............", "............lYYkkZZkkkk.............", "...........YkkkkkZZkkkkY............", "...........kkkkkkZZkkYYl............", "..........kkkkkkkYYYYLLLl...........", "............kkYYYYLLLLLLl...........", "...........YYYLLLLLLLLLLll..........", ".........YYLLLLLLLLLLLLLLl..........", ".........lLLLLLLLLLLLLLLLl..........", "........llLLLLLLLLLLLLLLLll.........", "........llLLLLLLLLLLLLLLLlY.........", "........lLLLLLLLLLLLLLYYYY..........", ".......llLLLLLLLLLYYYYYk............", ".......llLLLLYYYYYZkkkkkkkk.........", ".......llYYYYkkkkZZkkkkkkkkk........", ".......YYkkkkkkkkZZkkkkkkkkY........", "......kkkkkkkkkkkZZkkkkYYYYll.......", ".......kkkkkkkkkkYYYYYYLLLLll.......", ".........kkkYYYYYYLLLLLLLLLll.......", "........YYYYLLLLLLLLLLLLLLLLl.......", ".....YYYLLLLLLLLLLLLLLLLLLLLll......", ".....llLLLLLLLLLLLLLLLLLLLLLll......", ".....llLLLLLLLLLLLLLLLLLLLLLll......", ".....llLLLLLLLLLLLLLLLLLLLLLYY......", "....lllLLLLLLLLLLLLLLLLLYYYYY.......", "....llLLLLLLLLLLLLYYYYYYkk..........", "....llLLLLLLYYYYYYZkkkkkkkkkkk......", "....llYYYYYYkkkkkZZkkkkkkkkkkkk.....", "....YYkkkkkkkkkkkZZkkkkkkkkkkYY.....", "...YkkkkkkkkkkkkkZZkkkkkYYYYYlll....", "....kkkkkkkkkkkkkYYYYYYYLLLLLlll....", ".......kkkkYYYYYYYLLLLLLLLLLLLll....", ".....YYYYYYLLLLLLLLLLLLLLLLLLLll....", "...YYLLLLLLLLLLLLLLLLLLLLLLLLLll....", "..YllLLLLLLLLLLLLLLLLLLLLLLLLLlll...", "..lllLLLLLLLLLLLLLLLLLLLLLLLLLlll...", "..lllLLLLLLLLLLLLLLLLLLLLLLLLLYYY...", "..llLLLLLLLLLLLLLLLLLLLLLYYYYYY.....", "..llLLLLLLLLLLLLLLYYYYYYYYkk........", ".lllLLLLLLYYYYYYYYZkkkkkkkkkkkkk...."],
+  ["................LLZ.................", "..............LLYYZkk...............", ".............lYYkZZkkk..............", "............YYkkkZZkkkY.............", "............kkkkkZZkkYY.............", "...........kkkkkkZZYYYLl............", "............kkkYYYYLLLLl............", "............YYYLLLLLLLLLl...........", "..........YYLLLLLLLLLLLLl...........", ".........YlLLLLLLLLLLLLLll..........", ".........lLLLLLLLLLLLLLLLl..........", ".........lLLLLLLLLLLLLLLLl..........", "........llLLLLLLLLLLLLLYYY..........", "........llLLLLLLLLLYYYYY............", "........lLLLLLLYYYYYkkkkkk..........", ".......llLLYYYYkkZZkkkkkkkkk........", ".......lYYkkkkkkkZZkkkkkkkkY........", ".......kkkkkkkkkkZZkkkkkYYYl........", ".......kkkkkkkkkkZZYYYYYLLLl........", "........kkkkkkYYYYYYLLLLLLLll.......", ".........YYYYYLLLLLLLLLLLLLll.......", "......YYYLLLLLLLLLLLLLLLLLLll.......", "......lLLLLLLLLLLLLLLLLLLLLLl.......", ".....llLLLLLLLLLLLLLLLLLLLLLll......", ".....llLLLLLLLLLLLLLLLLLLLLLlY......", ".....llLLLLLLLLLLLLLLLLLLLYYY.......", ".....llLLLLLLLLLLLLLYYYYYY..........", "....lllLLLLLLLYYYYYYkkkkkkkkk.......", "....llLLYYYYYYkkkZZkkkkkkkkkkkk.....", "....lYYYkkkkkkkkkZZkkkkkkkkkkkY.....", "....YkkkkkkkkkkkkZZkkkkkkkYYYYl.....", "....kkkkkkkkkkkkkZZkYYYYYYLLLll.....", "......kkkkkkkYYYYYYYLLLLLLLLLlll....", ".......YYYYYYLLLLLLLLLLLLLLLLlll....", "....YYYLLLLLLLLLLLLLLLLLLLLLLLll....", "...YlLLLLLLLLLLLLLLLLLLLLLLLLLll....", "...llLLLLLLLLLLLLLLLLLLLLLLLLLll....", "..lllLLLLLLLLLLLLLLLLLLLLLLLLLlYY...", "..lllLLLLLLLLLLLLLLLLLLLLLLYYYYY....", "..lllLLLLLLLLLLLLLLLLYYYYYYY........", "..llLLLLLLLLLYYYYYYYYkkkkkkkkkk.....", "..llLLLYYYYYYYkkkZZkkkkkkkkkkkkkk...", ".lYYYYYkkkkkkkkkkZZkkkkkkkkkkkkkYY.."],
+  ["................LZZ.................", "..............YYkZZkk...............", ".............kkkkZZkkY..............", "............kkkkkZZYYYl.............", "............kkkkkYYYLLl.............", "..............YYYLLLLLLl............", "...........YYYLLLLLLLLLl............", "..........YLLLLLLLLLLLLLl...........", "..........lLLLLLLLLLLLLLl...........", ".........llLLLLLLLLLLLLLll..........", ".........lLLLLLLLLLLLLLLYY..........", ".........lLLLLLLLLLLLYYY............", "........llLLLLLLLYYYYkkk............", "........llLLYYYYYZZkkkkkkkk.........", "........lYYYkkkkkZZkkkkkkkk.........", ".......YYkkkkkkkkZZkkkkkkYYl........", ".......kkkkkkkkkkZZkkYYYYLll........", "........kkkkkkkkYYYYYLLLLLll........", "...........YYYYYLLLLLLLLLLLl........", "........YYYLLLLLLLLLLLLLLLLll.......", "......YlLLLLLLLLLLLLLLLLLLLll.......", "......llLLLLLLLLLLLLLLLLLLLll.......", "......lLLLLLLLLLLLLLLLLLLLLLl.......", ".....llLLLLLLLLLLLLLLLLLLLLYYY......", ".....llLLLLLLLLLLLLLLLYYYYY.........", ".....llLLLLLLLLLYYYYYYYkkkk.........", ".....llLLLYYYYYYYZZkkkkkkkkkkk......", "....llYYYYYkkkkkkZZkkkkkkkkkkkY.....", "....YYkkkkkkkkkkkZZkkkkkkkkYYYY.....", "....kkkkkkkkkkkkkZZkkkYYYYYYLll.....", ".....kkkkkkkkkkkYYYYYYYLLLLLLll.....", ".........kYYYYYYLLLLLLLLLLLLLll.....", ".....YYYYYLLLLLLLLLLLLLLLLLLLlll....", "...YYlLLLLLLLLLLLLLLLLLLLLLLLlll....", "...llLLLLLLLLLLLLLLLLLLLLLLLLLll....", "...llLLLLLLLLLLLLLLLLLLLLLLLLLll....", "...llLLLLLLLLLLLLLLLLLLLLLLLLYYY....", "..lllLLLLLLLLLLLLLLLLLLYYYYYY.......", "..lllLLLLLLLLLLLYYYYYYYYkkkkk.......", "..lllLLLLYYYYYYYkZZkkkkkkkkkkkkkk...", "..llYYYYYkkkkkkkkZZkkkkkkkkkkkkkk...", "..YYkkkkkkkkkkkkkZZkkkkkkkkkkYYYY...", ".YkkkkkkkkkkkkkkkZZkkkkYYYYYYYLlll.."],
+  ["................kZZ.................", "..............kkkZZYY...............", ".............kkkkZYYLl..............", "..............kYYYLLLLl.............", ".............YYLLLLLLLl.............", "...........YLLLLLLLLLLLl............", "...........lLLLLLLLLLLLl............", "..........lLLLLLLLLLLLLLl...........", "..........lLLLLLLLLLLLLLY...........", ".........llLLLLLLLLLLLYYY...........", ".........lLLLLLLLLYYYYk.............", ".........lLLLLYYYYZkkkkkkk..........", "........llYYYYkkkZZkkkkkkkk.........", "........YYkkkkkkkZZkkkkkkkY.........", "........kkkkkkkkkZZkkkkYYYl.........", "........kkkkkkkkkZYYYYYLLLll........", "..........kkkYYYYYLLLLLLLLll........", ".........YYYYLLLLLLLLLLLLLll........", ".......YYLLLLLLLLLLLLLLLLLLl........", "......llLLLLLLLLLLLLLLLLLLLll.......", "......llLLLLLLLLLLLLLLLLLLLll.......", "......llLLLLLLLLLLLLLLLLLLLlY.......", "......lLLLLLLLLLLLLLLLLLYYYY........", ".....llLLLLLLLLLLLLYYYYYk...........", ".....llLLLLLLYYYYYYkkkkkkkkkk.......", ".....llLYYYYYkkkkZZkkkkkkkkkkk......", ".....YYYkkkkkkkkkZZkkkkkkkkkkY......", "....YkkkkkkkkkkkkZZkkkkkYYYYYll.....", ".....kkkkkkkkkkkkZYYYYYYYLLLLll.....", ".......kkkkkYYYYYYYLLLLLLLLLLll.....", ".......YYYYYLLLLLLLLLLLLLLLLLll.....", "....YYYLLLLLLLLLLLLLLLLLLLLLLll.....", "...YllLLLLLLLLLLLLLLLLLLLLLLLlll....", "...lllLLLLLLLLLLLLLLLLLLLLLLLlll....", "...llLLLLLLLLLLLLLLLLLLLLLLLLLYY....", "...llLLLLLLLLLLLLLLLLLLLLYYYYY......", "...llLLLLLLLLLLLLLLYYYYYYYk.........", "..lllLLLLLLLYYYYYYYkkkkkkkkkkkk.....", "..lllLYYYYYYkkkkkZZkkkkkkkkkkkkkk...", "..YYYYkkkkkkkkkkkZZkkkkkkkkkkkkYY...", "..kkkkkkkkkkkkkkkZZkkkkkkkYYYYYll...", "..kkkkkkkkkkkkkkkZYYYYYYYYLLLLLll...", "......kkkkkYYYYYYYYLLLLLLLLLLLLlll.."],
+  ["................kZY.................", "..............kkkYLLL...............", "..............YYLLLLLl..............", "............YYLLLLLLLLl.............", "............lLLLLLLLLLl.............", "...........lLLLLLLLLLLLl............", "...........lLLLLLLLLLLLl............", "..........lLLLLLLLLLLLLYY...........", "..........lLLLLLLLLLYYY.............", ".........llLLLLLYYYYkkkk............", ".........lLLYYYYkZZkkkkkkk..........", ".........YYYkkkkkZZkkkkkkk..........", "........YkkkkkkkkZZkkkkkYYl.........", "........kkkkkkkkkZZkYYYYLll.........", ".........kkkkkkYYYYYLLLLLLl.........", "...........YYYYLLLLLLLLLLLll........", "........YYYLLLLLLLLLLLLLLLll........", ".......YlLLLLLLLLLLLLLLLLLll........", ".......lLLLLLLLLLLLLLLLLLLLl........", "......llLLLLLLLLLLLLLLLLLLLlY.......", "......llLLLLLLLLLLLLLLLLLYYY........", "......llLLLLLLLLLLLLLYYYYY..........", "......lLLLLLLLLYYYYYYkkkkkk.........", ".....llLLLYYYYYkkZZkkkkkkkkkkk......", ".....lYYYYkkkkkkkZZkkkkkkkkkkY......", ".....YkkkkkkkkkkkZZkkkkkkkYYYl......", ".....kkkkkkkkkkkkZZkkYYYYYLLll......", "......kkkkkkkkYYYYYYYLLLLLLLlll.....", ".........YYYYYYLLLLLLLLLLLLLLll.....", ".....YYYYLLLLLLLLLLLLLLLLLLLLll.....", "....YlLLLLLLLLLLLLLLLLLLLLLLLll.....", "....llLLLLLLLLLLLLLLLLLLLLLLLll.....", "...lllLLLLLLLLLLLLLLLLLLLLLLLllY....", "...lllLLLLLLLLLLLLLLLLLLLLLYYYY.....", "...llLLLLLLLLLLLLLLLLYYYYYYY........", "...llLLLLLLLLLYYYYYYYYkkkkkkkk......", "...llLLLYYYYYYYkkZZkkkkkkkkkkkkk....", "..llYYYYkkkkkkkkkZZkkkkkkkkkkkkkY...", "..YkkkkkkkkkkkkkkZZkkkkkkkkkYYYYl...", "..kkkkkkkkkkkkkkkZZkkYYYYYYYLLlll...", "....kkkkkkkkkkYYYYYYYYLLLLLLLLLll...", ".......YYYYYYYLLLLLLLLLLLLLLLLLll...", "...YYYYLLLLLLLLLLLLLLLLLLLLLLLLlll.."],
+  [".................LL.................", "..............YYLLLLL...............", ".............YLLLLLLLl..............", "............lLLLLLLLLLl.............", "............lLLLLLLLLLl.............", "...........lLLLLLLLLLLLY............", "...........lLLLLLLLLLYY.............", "..........lLLLLLLYYYYkk.............", "..........lLLLYYYZZkkkkkk...........", ".........llYYYkkkZZkkkkkkk..........", ".........YkkkkkkkZZkkkkkYY..........", ".........kkkkkkkkZZkkYYYYl..........", ".........kkkkkkkkYYYYLLLLll.........", "...........kkYYYYLLLLLLLLll.........", ".........YYYYLLLLLLLLLLLLLl.........", ".......YYLLLLLLLLLLLLLLLLLll........", ".......llLLLLLLLLLLLLLLLLLll........", ".......llLLLLLLLLLLLLLLLLLll........", ".......lLLLLLLLLLLLLLLLLLLYY........", "......llLLLLLLLLLLLLLLYYYYY.........", "......llLLLLLLLLLYYYYYYkkk..........", "......llLLLLYYYYYZZkkkkkkkkkk.......", "......lYYYYYkkkkkZZkkkkkkkkkk.......", ".....YYkkkkkkkkkkZZkkkkkkkkYYY......", ".....kkkkkkkkkkkkZZkkkkYYYYLll......", "......kkkkkkkkkkkYYYYYYLLLLLll......", ".........kkYYYYYYLLLLLLLLLLLll......", "......YYYYYLLLLLLLLLLLLLLLLLlll.....", "....YYLLLLLLLLLLLLLLLLLLLLLLLll.....", "....llLLLLLLLLLLLLLLLLLLLLLLLll.....", "....llLLLLLLLLLLLLLLLLLLLLLLLll.....", "....llLLLLLLLLLLLLLLLLLLLLLLLYY.....", "...lllLLLLLLLLLLLLLLLLLLYYYYY.......", "...lllLLLLLLLLLLLYYYYYYYkkkk........", "...llLLLLLYYYYYYYZZkkkkkkkkkkkk.....", "...llYYYYYkkkkkkkZZkkkkkkkkkkkkk....", "...YYkkkkkkkkkkkkZZkkkkkkkkkkYYY....", "..kkkkkkkkkkkkkkkZZkkkkkYYYYYYlll...", "...kkkkkkkkkkkkkkYYYYYYYLLLLLLlll...", ".......kkYYYYYYYYLLLLLLLLLLLLLlll...", "....YYYYYYLLLLLLLLLLLLLLLLLLLLLll...", "..YYLLLLLLLLLLLLLLLLLLLLLLLLLLLll...", ".YllLLLLLLLLLLLLLLLLLLLLLLLLLLLlll.."],
+  ["................LLL.................", "..............LLLLLLL...............", ".............lLLLLLLLl..............", "............lLLLLLLLLLY.............", "............lLLLLLLLLYY.............", "...........lLLLLLLYYY...............", "...........lLLLYYYYkkkkk............", "..........lLYYYkkZZkkkkkk...........", "..........YYkkkkkZZkkkkkY...........", ".........YkkkkkkkZZkkkYYYl..........", ".........kkkkkkkkZZYYYYLLl..........", "...........kkkYYYYYLLLLLLl..........", "...........YYYLLLLLLLLLLLll.........", "........YYLLLLLLLLLLLLLLLll.........", "........lLLLLLLLLLLLLLLLLLl.........", ".......llLLLLLLLLLLLLLLLLLll........", ".......llLLLLLLLLLLLLLLLLLlY........", ".......llLLLLLLLLLLLLLLLYYY.........", ".......lLLLLLLLLLLLYYYYY............", "......llLLLLLLYYYYYkkkkkkkk.........", "......llLYYYYYkkkZZkkkkkkkkkk.......", "......YYYkkkkkkkkZZkkkkkkkkkY.......", "......kkkkkkkkkkkZZkkkkkYYYYl.......", ".....kkkkkkkkkkkkZZYYYYYYLLLll......", "........kkkkkYYYYYYLLLLLLLLLll......", "........YYYYYLLLLLLLLLLLLLLLll......", ".....YYYLLLLLLLLLLLLLLLLLLLLll......", "....YllLLLLLLLLLLLLLLLLLLLLLlll.....", "....llLLLLLLLLLLLLLLLLLLLLLLLll.....", "....llLLLLLLLLLLLLLLLLLLLLLLLlY.....", "....llLLLLLLLLLLLLLLLLLLLLYYYY......", "....llLLLLLLLLLLLLLLYYYYYY..........", "...lllLLLLLLLYYYYYYYkkkkkkkkkk......", "...lllLYYYYYYkkkkZZkkkkkkkkkkkkk....", "...YYYYkkkkkkkkkkZZkkkkkkkkkkkYY....", "...kkkkkkkkkkkkkkZZkkkkkkkYYYYYl....", "...kkkkkkkkkkkkkkZZYYYYYYYLLLLll....", "......kkkkkkYYYYYYYYLLLLLLLLLLlll...", "......YYYYYYLLLLLLLLLLLLLLLLLLlll...", "..YYYYLLLLLLLLLLLLLLLLLLLLLLLLlll...", "..llLLLLLLLLLLLLLLLLLLLLLLLLLLLll...", "..llLLLLLLLLLLLLLLLLLLLLLLLLLLLll...", ".lllLLLLLLLLLLLLLLLLLLLLLLLLLLLlYY.."],
+  ["................LLL.................", "..............LLLLLLL...............", ".............lLLLLLLLY..............", "............lLLLLLLYY...............", "............lLLLLYYYkk..............", "...........lLLYYYZZkkkkk............", "...........YYkkkkZZkkkkk............", "..........YkkkkkkZZkkkkYY...........", "..........kkkkkkkZZkYYYLl...........", "..........kkkkkkYYYYLLLLll..........", "............YYYYLLLLLLLLLl..........", ".........YYYLLLLLLLLLLLLLl..........", "........YlLLLLLLLLLLLLLLLll.........", "........llLLLLLLLLLLLLLLLll.........", "........lLLLLLLLLLLLLLLLLLl.........", ".......llLLLLLLLLLLLLLLLLYY.........", ".......llLLLLLLLLLLLLYYYY...........", ".......llLLLLLLLYYYYYkkkkk..........", ".......lLLLYYYYYkZZkkkkkkkkk........", "......lYYYYkkkkkkZZkkkkkkkkkY.......", "......YkkkkkkkkkkZZkkkkkkkYYY.......", "......kkkkkkkkkkkZZkkYYYYYLll.......", ".......kkkkkkkkYYYYYYLLLLLLLl.......", "..........YYYYYYLLLLLLLLLLLLll......", "......YYYYLLLLLLLLLLLLLLLLLLll......", ".....YlLLLLLLLLLLLLLLLLLLLLLll......", ".....llLLLLLLLLLLLLLLLLLLLLLll......", "....lllLLLLLLLLLLLLLLLLLLLLLllY.....", "....llLLLLLLLLLLLLLLLLLLLLLYYY......", "....llLLLLLLLLLLLLLLLLYYYYYY........", "....llLLLLLLLLLYYYYYYYkkkkkk........", "....llLLLYYYYYYYkZZkkkkkkkkkkkk.....", "...llYYYYkkkkkkkkZZkkkkkkkkkkkkY....", "...YYkkkkkkkkkkkkZZkkkkkkkkkYYYl....", "...kkkkkkkkkkkkkkZZkkkYYYYYYLLll....", ".....kkkkkkkkkkYYYYYYYLLLLLLLLll....", "........YYYYYYYLLLLLLLLLLLLLLLll....", "....YYYYLLLLLLLLLLLLLLLLLLLLLLlll...", "..YYlLLLLLLLLLLLLLLLLLLLLLLLLLlll...", "..lllLLLLLLLLLLLLLLLLLLLLLLLLLlll...", "..llLLLLLLLLLLLLLLLLLLLLLLLLLLLll...", "..llLLLLLLLLLLLLLLLLLLLLLLLLLYYYY...", ".lllLLLLLLLLLLLLLLLLLLLYYYYYY......."]
+];
+const screwFrame = k => [...SCREW.slice(0, 6), ...SCREW_SAIL[k], ...SCREW.slice(49)];
 const HELMET = { screw: ['#6b4423', '#8a5a33'], soldier: ['#4b5320', '#6b7a35'], spearman: ['#6b4423', '#8a5a33'], knight: ['#9aa3ad', '#d5dbe1'],
                  archer: ['#2f6b3a', '#4f8f5a'], builder: ['#e2b714', '#f5d652'] };
 const SPRITE_PAL = { S: '#f1c27d', s: '#d9a066', E: '#22303b', B: '#6b4423', P: '#3a3f2a', K: '#161616',
                      M: '#c9ced6', W: '#8a5a33', T: '#e8e1cf', R: '#9a6b43', r: '#6e4a2c', A: '#2b1d14',
                      L: '#f2e8cc', l: '#d6c6a0', k: '#a8987a', Z: '#8a5a33', Y: '#6e4a2c' };
 const spriteCache = new Map();
-function unitTexture(type, team) {
-  const key = type + team;
+/* ---------- Animation frames, made from the base drawings ----------
+   Frames: 'idle', 'blink', 'walk1' / 'walk3' (a leg lifted; walk0/2 = idle), 'atk1' (wind up), 'atk2' (strike).
+   The screw's frames are its sail turns (0-7). */
+const range16 = (a, b) => { const out = []; for (let i = a; i <= b; i++) out.push(i); return out; };
+// Weapon poses for the wind-up and the strike (16 x 24 body; "forward" is to the right).
+const WEAPON_UP = {
+  soldier:  [...range16(2, 7).map(y => [12, y, 'M']), [11, 8, 'B'], [12, 8, 'B'], [13, 8, 'B'], [12, 9, 'B']],
+  spearman: [[12, 2, 'M'], [11, 3, 'M'], [12, 3, 'M'], [13, 3, 'M'], ...range16(4, 22).map(y => [12, y, 'W'])],
+  archer:   [[12, 4, 'W'], [13, 5, 'W'], [14, 6, 'W'], [14, 7, 'W'], [14, 8, 'W'], [14, 9, 'W'], [13, 10, 'W'], [12, 11, 'W'],
+             [11, 5, 'T'], [10, 6, 'T'], [10, 7, 'T'], [10, 8, 'T'], [10, 9, 'T'], [11, 10, 'T'], ...range16(10, 15).map(x => [x, 7, 'B'])],
+  builder:  [...range16(10, 14).map(x => [x, 1, 'M']), ...range16(2, 7).map(y => [12, y, 'W'])],
+};
+const WEAPON_HIT = {
+  soldier:  [[11, 9, 'B'], [11, 10, 'B'], [11, 11, 'B'], [12, 10, 'B'], ...range16(13, 15).map(x => [x, 10, 'M'])],
+  spearman: [...range16(3, 13).map(x => [x, 11, 'W']), [14, 10, 'M'], [14, 11, 'M'], [14, 12, 'M'], [15, 11, 'M']],
+  archer:   [[12, 4, 'W'], [13, 5, 'W'], [14, 6, 'W'], [14, 7, 'W'], [14, 8, 'W'], [14, 9, 'W'], [13, 10, 'W'], [12, 11, 'W'],
+             ...range16(5, 10).map(y => [12, y, 'T'])],
+  builder:  [[11, 10, 'W'], [12, 11, 'W'], [13, 12, 'W'], [14, 11, 'M'], [14, 12, 'M'], [14, 13, 'M'], [15, 12, 'M'], [13, 13, 'M']],
+};
+// Lift some columns' pixels by n rows inside rows y0..y1 (a raised leg).
+function lift(rows, cols, y0, y1, n) {
+  const g = rows.map(r => r.split(''));
+  for (const x of cols) for (let y = y0; y <= y1; y++) g[y][x] = y + n <= y1 ? rows[y + n][x] : '.';
+  return g.map(r => r.join(''));
+}
+function artFor(type, frame) {
+  if (type === 'screw') return { rows: screwFrame(typeof frame === 'number' ? frame : 0), weapon: [] };
+  if (type === 'knight') {
+    if (frame === 'atk2') return { rows: KNIGHT_DIP, weapon: [] };
+    if (frame === 'walk1') return { rows: lift(KNIGHT, [7, 8, 17, 18], 29, 38, 2), weapon: [] };   // gallop: two legs up
+    if (frame === 'walk3') return { rows: lift(KNIGHT, [4, 5, 20, 21], 29, 38, 2), weapon: [] };
+    return { rows: KNIGHT, weapon: [] };
+  }
+  let rows = BODY;
+  if (frame === 'walk1') rows = lift(BODY, [3, 4, 5, 6], 16, 22, 1);      // left leg up
+  if (frame === 'walk3') rows = lift(BODY, [8, 9, 10, 11], 16, 22, 1);    // right leg up
+  if (frame === 'blink') rows = rows.map((r, y) => y === 6 ? r.replace(/E/g, 'S') : r);
+  const weapon = (frame === 'atk1' ? WEAPON_UP : frame === 'atk2' ? WEAPON_HIT : WEAPON)[type] || WEAPON[type] || [];
+  return { rows, weapon };
+}
+function unitTexture(type, team, frame = 0) {
+  const key = type + team + ':' + frame;
   if (spriteCache.has(key)) return spriteCache.get(key);
-  const art = type === 'knight' ? KNIGHT : type === 'screw' ? SCREW : BODY;
+  const { rows: art, weapon } = artFor(type, frame);
   const c = document.createElement('canvas');
   c.width = art[0].length; c.height = art.length;
   const ctx = c.getContext('2d');
@@ -914,12 +1009,55 @@ function unitTexture(type, team) {
   const pal = Object.assign({}, SPRITE_PAL, { U: '#' + tc.getHexString(), u: '#' + shade.getHexString(), H: HELMET[type][0], h: HELMET[type][1] });
   const px = (x, y, k) => { ctx.fillStyle = pal[k]; ctx.fillRect(x, y, 1, 1); };
   art.forEach((row, y) => { for (let x = 0; x < row.length; x++) if (row[x] !== '.') px(x, y, row[x]); });
-  for (const [x, y, k] of WEAPON[type] || []) px(x, y, k);
+  for (const [x, y, k] of weapon) px(x, y, k);
   const t = new THREE.CanvasTexture(c);
   t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
   spriteCache.set(key, t);
   return t;
 }
+// Start an attack or dig animation for unit k, toward the point (tx, tz).
+function playAnim(k, kind, tx, tz) {
+  const g = unitGroups[k], u = S.units[k];
+  if (!g || !u || reduceMotion) return;
+  const dx = tx - (u.x + 0.5), dz = tz - (u.z + 0.5), len = Math.hypot(dx, dz);
+  g.userData.anim = { kind, t0: performance.now(), dx: len ? dx / len : 0, dz: len ? dz / len : 0 };
+}
+// Animate the actions of a group run by the bot or replayed from an online turn.
+function animActs(acts) {
+  for (const a of acts || []) {
+    if (a.t === 'attack' && S.units[a.v]) playAnim(a.u, 'attack', S.units[a.v].x + 0.5, S.units[a.v].z + 0.5);
+    if (a.t === 'dig') playAnim(a.u, 'dig', a.x + 0.5, a.z + 0.5);
+  }
+}
+const ANIM_LEN = { attack: 450, dig: 400 };
+// Pick each unit's frame: attack/dig (wind up, strike, lunge), walking (legs), or idle (breathing, a blink now and then).
+function animateUnit(g, now, dt) {
+  const b = g.userData.base, sprite = g.userData.sprite, type = g.userData.type, team = g.userData.team;
+  // walking = the unit's drawn position moved this frame (a little memory so the cycle doesn't flicker)
+  b.moving = g.position.distanceTo(b.last) > 0.004 ? 0.12 : Math.max(0, b.moving - dt);
+  b.last.copy(g.position);
+  let frame = 'idle', lunge = 0, dip = 0;
+  const an = g.userData.anim;
+  if (an) {
+    const t = (now - an.t0) / ANIM_LEN[an.kind];
+    if (t >= 1) g.userData.anim = null;
+    else {
+      frame = t < 0.33 ? 'atk1' : t < 0.8 ? 'atk2' : 'idle';
+      lunge = Math.sin(Math.PI * t) * (an.kind === 'attack' ? 0.3 : 0.12);
+      if (type === 'screw') dip = -lunge;          // the screw drops its stones: a little dip
+    }
+  }
+  if (!an || !g.userData.anim) {
+    if (b.moving > 0) frame = ['idle', 'walk1', 'idle', 'walk3'][Math.floor(now / 110) % 4];
+    else if (((now / 1000 + b.phase) % 4.2) < 0.13) frame = 'blink';
+  }
+  const map = unitTexture(type, team, frame);
+  if (sprite.material.map !== map) sprite.material.map = map;
+  const breathe = b.moving > 0 || an ? 0 : Math.sin((now / 1000 + b.phase) * Math.PI) * 0.018;
+  sprite.position.y = b.sprite + breathe + dip;
+  if (an && g.userData.anim) { g.position.x += an.dx * lunge; g.position.z += an.dz * lunge; }
+}
+
 let sel = 0;
 const selUnit = () => S.units[sel];
 const unitGroups = [];
@@ -929,7 +1067,7 @@ function makeUnitGroup(u) {
   // Sprite size in blocks, and how high its bottom floats (the screw hovers): soldier 16x24 px, knight 28x40, screw 36x72.
   const [sw, sh, lift] = u.type === 'screw' ? [1.5, 3.0, 0.35] : tall ? [1.4, 2.0, 0] : [0.74, 1.1, 0];
   const sprite = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh),
-    new THREE.MeshBasicMaterial({ map: unitTexture(u.type, u.team), alphaTest: 0.5, side: THREE.DoubleSide }));
+    new THREE.MeshBasicMaterial({ map: unitTexture(u.type, u.team, u.type === 'screw' ? 0 : 'idle'), alphaTest: 0.5, side: THREE.DoubleSide }));
   sprite.position.y = lift + sh / 2;
   g.add(sprite);
   g.userData.sprite = sprite;
@@ -948,8 +1086,14 @@ function makeUnitGroup(u) {
   hpBar.position.y = lift + sh + 0.18;
   g.add(hpBar);
   g.userData.hpBar = hpBar; g.userData.hpFill = hpFill;
+  g.userData.base = { sprite: sprite.position.y, phase: (u.id * 1.37) % 5, last: new THREE.Vector3(), moving: 0 };
+  if (u.type === 'screw') {                       // animated: the sail turns and the machine bobs, out of step with others
+    g.userData.frames = [0, 1, 2, 3, 4, 5, 6, 7].map(k => unitTexture('screw', u.team, k));
+    g.userData.bob = { sprite: sprite.position.y, hp: hpBar.position.y, phase: u.id * 0.73 };
+  }
   g.userData.vis = new THREE.Vector3(u.x + 0.5, u.y, u.z + 0.5);
   g.userData.key = u.type + u.team;
+  g.userData.type = u.type; g.userData.team = u.team;
   g.position.copy(g.userData.vis);
   scene.add(g);
   return g;
@@ -1449,6 +1593,7 @@ function tryAttack(cx, cy) {
   }
   const b = S.units[k];
   const hit = attack(S, u, b);
+  if (hit) playAnim(sel, 'attack', b.x + 0.5, b.z + 0.5);
   if (hit) countAct('attack');
   endAction(S);
   if (!hit) { refreshHud(); return; }
@@ -1507,7 +1652,7 @@ function tryDig(cx, cy) {
   }
   const before = S.gold[S.team];
   const stay = !u.moved && pending[0] === u.x && pending[1] === u.y && pending[2] === u.z;
-  if (dig(S, u, ...c)) countAct('dig');
+  if (dig(S, u, ...c)) { countAct('dig'); playAnim(sel, 'dig', c[0] + 0.5, c[2] + 0.5); }
   if (stay) pending = [u.x, u.y, u.z];          // digging under your feet takes you down: the plan follows
   if (S.gold[S.team] > before) flash('+' + (S.gold[S.team] - before) + ' gold');
   rebuildChanged();
@@ -1908,6 +2053,7 @@ function botAttackFrom(u, t) {
 async function botStep(acts) {
   if (!acts.length) return false;
   const ok = runGroup(S, acts);
+  animActs(acts);
   hiddenLoot.clear(); syncUnitGroups(); playEvents(); rebuildChanged(); refreshHud();
   await sleep(BOT_STEP_MS);
   return ok;
@@ -2064,7 +2210,7 @@ const TUT = [
   { text: 'Drag the joystick (or tap a blue tile) to move your soldier.', pulse: '#joy',
     done: () => { const u = selUnit(); return u.moved || (pending && (pending[0] !== u.x || pending[2] !== u.z)); } },
   { text: 'Tap Confirm to finish the move.', pulse: '[data-act="confirm"]', done: () => tut.saw.move },
-  { text: 'Builders dig and mine gold. Tap Next (or Units) until your Builder is selected.', pulse: '[data-act="next"]',
+  { text: 'Builders dig and mine gold. Tap Next (or the Units button) until your Builder is selected.', pulse: '[data-act="next"]',
     done: () => selUnit().type === 'builder' },
   { text: 'Tap Dig, then tap the block under your builder. Gold sits 3 to 7 blocks down.', pulse: '[data-act="dig"]', done: () => tut.saw.dig },
   { text: "Tap End turn. Then it's the bot's move.", pulse: '[data-act="endturn"]', done: () => S.team === BOT || S.turn > 1 },
@@ -2299,6 +2445,7 @@ function applyMatch(m, initial) {
   for (const t of m.turns) {
     if (t.n !== NET.count) continue;
     const err = replayTurn(S, t);
+    if (!initial && !err) for (const grp of t.groups || []) animActs(grp);
     if (err) {                                   // their turn doesn't reproduce here: stop the game and tell the server
       NET.done = true; NET.desync = t.n;
       api('POST', `/matches/${NET.id}/desync`, { n: t.n, reason: err }).catch(() => {});
@@ -2809,6 +2956,15 @@ function frame(now) {
     const camAng = Math.atan2(camera.position.x - g.position.x, camera.position.z - g.position.z);
     g.userData.sprite.rotation.y = camAng - g.rotation.y;
     g.userData.hpBar.rotation.y = camAng - g.rotation.y;
+    if (!g.userData.bob && g.userData.base && !reduceMotion) animateUnit(g, now, dt);
+    const bob = g.userData.bob;
+    if (bob && !reduceMotion) {
+      const t = now / 1000 + bob.phase;
+      const map = g.userData.frames[Math.floor(t * 10) % 8];
+      if (g.userData.sprite.material.map !== map) g.userData.sprite.material.map = map;
+      const lift = Math.sin(t * Math.PI * 2 * 0.9) * 0.1;
+      g.userData.sprite.position.y = bob.sprite + lift; g.userData.hpBar.position.y = bob.hp + lift;
+    }
     g.userData.hpBar.visible = g.userData.sprite.visible;
     const ring = atkRing(k);
     ring.visible = targets.includes(k) && g.userData.sprite.visible;
@@ -2836,6 +2992,7 @@ if (DEBUG) window.BW_DEBUG = {
     settle();
   },
   select(k) { selectUnit(k); },
+  anim(k, kind) { playAnim(k, kind, S.units[k].x + 1.5, S.units[k].z + 0.5); },   // test an attack/dig animation
   atlas: () => atlasTex.image.toDataURL('image/png'),      // the generated block textures, 32x32 per tile
   // Point the Commander camera from (px,py,pz) at (tx,ty,tz).
   cam(px, py, pz, tx, ty, tz) {
@@ -2848,6 +3005,7 @@ if (DEBUG) window.BW_DEBUG = {
     const u = selUnit(), stay = pending[0] === u.x && pending[1] === u.y && pending[2] === u.z;
     setMode('dig'); beginAction(S);
     const ok = dig(S, u, u.x, u.y - 1, u.z);
+    if (ok) playAnim(sel, 'dig', u.x + 0.5, u.z + 0.5);
     if (ok) countAct('dig');
     if (stay) pending = [u.x, u.y, u.z];
     rebuildChanged(); settle(); return ok;
