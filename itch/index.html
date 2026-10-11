@@ -216,6 +216,17 @@ body.waiting #controls .leftpad, body.waiting #controls .cgrid{display:none}
 .msheet .btn{height:52px;font-size:17px}
 .msheet .btn[hidden]{display:none}
 .msheet .danger{background:var(--brk);color:#fff}
+#tut{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 214px);z-index:6;
+  width:min(92vw,380px);background:var(--ink);color:var(--sky);border-radius:14px;padding:12px 14px 10px;font-weight:700;font-size:15px;
+  line-height:1.35;box-shadow:0 6px 18px rgba(0,0,0,.3);pointer-events:auto}
+#tut[hidden]{display:none}
+#tut::after{content:"";position:absolute;left:50%;bottom:-8px;transform:translateX(-50%);border:8px solid transparent;border-bottom:0;border-top-color:var(--ink)}
+#tut .tutfoot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:12px;opacity:.8}
+#tut button{appearance:none;background:none;border:none;color:inherit;font:inherit;text-decoration:underline;padding:2px 4px;cursor:pointer}
+#tut .tutok{text-decoration:none;background:var(--cmd);color:#22303b;border-radius:8px;padding:4px 12px;opacity:1}
+.tut-pulse{animation:tutpulse 1.1s ease-in-out infinite}
+@keyframes tutpulse{0%,100%{box-shadow:0 0 0 0 rgba(255,122,26,.0)}50%{box-shadow:0 0 0 7px rgba(255,122,26,.75)}}
+@media (prefers-reduced-motion:reduce){.tut-pulse{animation:none;outline:3px solid var(--cmd)}}
 #toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 14px);transform:translateX(-50%);z-index:20;
   background:var(--ink);color:var(--sky);font-weight:800;font-size:15px;padding:10px 16px;border-radius:12px;max-width:min(92vw,420px);text-align:center;
   box-shadow:0 4px 14px rgba(0,0,0,.25)}
@@ -328,6 +339,10 @@ body.waiting #controls .leftpad, body.waiting #controls .cgrid{display:none}
 </div>
 
 <div id="toast" role="status" hidden></div>
+<div id="tut" role="status" hidden>
+  <div id="tutText"></div>
+  <div class="tutfoot"><span id="tutStep"></span><span><button id="tutSkip">Skip tutorial</button> <button class="tutok" id="tutOk" hidden>Got it</button></span></div>
+</div>
 
 <div id="notifyView" hidden>
   <div class="msheet" role="dialog" aria-modal="true" aria-labelledby="nTitle">
@@ -2042,7 +2057,57 @@ function flushEvents() {
 }
 // Hot-seat activity: count actions and send one summary every 10 s (only when something happened).
 let hsActs = {};
-function countAct(kind) { if (!NET.id) hsActs[kind] = (hsActs[kind] || 0) + 1; }
+function countAct(kind) { if (!NET.id) hsActs[kind] = (hsActs[kind] || 0) + 1; tutSaw(kind); }
+
+/* ---------- First-game tutorial (first "Play vs bot"): one hint at a time, each done when you do it ---------- */
+const TUT = [
+  { text: 'Drag the joystick (or tap a blue tile) to move your soldier.', pulse: '#joy',
+    done: () => { const u = selUnit(); return u.moved || (pending && (pending[0] !== u.x || pending[2] !== u.z)); } },
+  { text: 'Tap Confirm to finish the move.', pulse: '[data-act="confirm"]', done: () => tut.saw.move },
+  { text: 'Builders dig and mine gold. Tap Next (or Units) until your Builder is selected.', pulse: '[data-act="next"]',
+    done: () => selUnit().type === 'builder' },
+  { text: 'Tap Dig, then tap the block under your builder. Gold sits 3 to 7 blocks down.', pulse: '[data-act="dig"]', done: () => tut.saw.dig },
+  { text: "Tap End turn. Then it's the bot's move.", pulse: '[data-act="endturn"]', done: () => S.team === BOT || S.turn > 1 },
+  { text: 'Win by capturing the enemy base (the red flag): stand a soldier on it and tap Capture. Watch out for the bot\'s waves!', ok: true },
+];
+const tut = { on: false, step: 0, saw: {} };
+function tutSaw(kind) { if (tut.on) tut.saw[kind] = true; }
+function tutStart() {
+  if (stored('bw:tutorialDone')) return;
+  tut.on = true; tut.step = -1; tut.saw = {};
+  tutShow(0);
+}
+function tutShow(n) {
+  document.querySelectorAll('.tut-pulse').forEach(e => e.classList.remove('tut-pulse'));
+  if (n >= TUT.length) return tutEnd('done');
+  tut.step = n;
+  const st = TUT[n];
+  $('tutText').textContent = st.text;
+  $('tutStep').textContent = (n + 1) + ' / ' + TUT.length;
+  $('tutOk').hidden = !st.ok;
+  $('tut').hidden = false;
+  track('tutorial', { step: n + 1 });
+}
+function tutEnd(how) {
+  tut.on = false; $('tut').hidden = true;
+  document.querySelectorAll('.tut-pulse').forEach(e => e.classList.remove('tut-pulse'));
+  stored('bw:tutorialDone', true);
+  track('tutorial', { [how]: true, step: tut.step + 1 }); flushEvents();
+}
+// Every frame: advance when the current step is done; keep the right button pulsing; hide while it's not your turn.
+function tutTick() {
+  if (!tut.on) return;
+  if (!botGame || lobbyOpen) { $('tut').hidden = true; return; }
+  const st = TUT[tut.step];
+  if (st.done && st.done()) return tutShow(tut.step + 1);
+  const yours = myTurn() || st.ok;
+  $('tut').hidden = !yours;
+  const el = st.pulse && document.querySelector(st.pulse);
+  document.querySelectorAll('.tut-pulse').forEach(e => { if (e !== el) e.classList.remove('tut-pulse'); });
+  if (el && yours && !el.classList.contains('tut-pulse')) el.classList.add('tut-pulse');
+}
+$('tutSkip').addEventListener('click', () => tutEnd('skipped'));
+$('tutOk').addEventListener('click', () => tutEnd('done'));
 function summarizeActs() { if (Object.keys(hsActs).length) { track('hotseat_acts', hsActs); hsActs = {}; } }
 setInterval(() => { summarizeActs(); flushEvents(); }, 10000);
 document.addEventListener('visibilitychange', () => { if (document.hidden) { summarizeActs(); flushEvents(); } });
@@ -2351,7 +2416,7 @@ $('kofiLobby').addEventListener('click', () => { track('kofi', { where: 'lobby' 
 $('kofiWait').addEventListener('click', () => { track('kofi', { where: 'waiting' }); flushEvents(); });
 $('lFriend').addEventListener('click', () => { track('friend'); flushEvents(); playFriend(); });
 $('lLocal').addEventListener('click', () => { botGame = false; newGame(undefined, randomSeed()); closeLobby(); track('hotseat_start'); hotseatWon = false; });
-$('lBot').addEventListener('click', () => { botGame = true; newGame(undefined, randomSeed()); botReset(); closeLobby(); track('hotseat_start', { bot: true }); hotseatWon = false; });
+$('lBot').addEventListener('click', () => { botGame = true; newGame(undefined, randomSeed()); botReset(); closeLobby(); track('hotseat_start', { bot: true }); hotseatWon = false; tutStart(); });
 $('lNotify').addEventListener('click', async () => { if (!await enablePush(true)) flash('Notifications are not available here'); updatePushUi(); });
 $('lName').addEventListener('change', rename);
 $('lName').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
@@ -2736,6 +2801,7 @@ function frame(now) {
   selRing.visible = !fps && !commander;
   updateFlyMark();
   updateButtons();
+  tutTick();
   if (lobbyOpen) rangeTiles.visible = destTile.visible = selRing.visible = false;   // a clean backdrop behind the lobby
   const targets = attackMode ? attackTargets() : [];
   unitGroups.forEach((g, k) => {
@@ -2782,6 +2848,7 @@ if (DEBUG) window.BW_DEBUG = {
     const u = selUnit(), stay = pending[0] === u.x && pending[1] === u.y && pending[2] === u.z;
     setMode('dig'); beginAction(S);
     const ok = dig(S, u, u.x, u.y - 1, u.z);
+    if (ok) countAct('dig');
     if (stay) pending = [u.x, u.y, u.z];
     rebuildChanged(); settle(); return ok;
   },

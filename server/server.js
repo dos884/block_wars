@@ -252,7 +252,7 @@ function allow(kind, ip, max) {
 }
 setInterval(() => { hits.clear(); q.expireQueue.run(Date.now() - SEARCH_FOR); }, 3600e3).unref();
 
-const EVENT_TYPES = new Set(['open', 'friend', 'hotseat_start', 'hotseat_turn', 'hotseat_win', 'hotseat_acts', 'kofi']);
+const EVENT_TYPES = new Set(['open', 'friend', 'hotseat_start', 'hotseat_turn', 'hotseat_win', 'hotseat_acts', 'kofi', 'tutorial']);
 
 /* ---------- HTTP helpers ---------- */
 class Fail extends Error { constructor(code, msg) { super(msg); this.code = code; } }
