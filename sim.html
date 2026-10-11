@@ -411,7 +411,7 @@ const {
   TEAM_NAMES, TEAM_COLORS, TYPES, UNIT_TYPES,
   idx, inGrid, mix, unitName, cellKey, newState, stateHash,
   stepTo, stepsFrom, moveOf, moveRange, moveUnit, canDig, digTool, dig, canAttack, attack, hasLadder, climbsLadders,
-  canCapture, capture, canBuild, buildUnit, incomeOf,
+  canCapture, capture, canBuild, buildUnit, incomeOf, costOf,
   beginAction, endAction, undo, redo, endTurn, gravityStep, waterStep, turnGroups, replayTurn, runGroup,
 } = BlockSim;
 
@@ -1441,7 +1441,7 @@ function renderBuildPanel() {
     const t = UNIT_TYPES[type], b = document.createElement('button');
     b.className = 'btn urow';
     b.disabled = !canBuild(S, type) || !myTurn();
-    b.innerHTML = '<span class="dot" style="background:' + hex(TEAM_COLORS[S.team]) + '"></span>' + t.label + '<span class="sub">' + t.cost + ' gold</span>';
+    b.innerHTML = '<span class="dot" style="background:' + hex(TEAM_COLORS[S.team]) + '"></span>' + t.label + '<span class="sub">' + costOf(S, type) + ' gold</span>';
     b.addEventListener('pointerdown', e => {
       e.preventDefault();
       if (falling || !canBuild(S, type) || !myTurn()) return;

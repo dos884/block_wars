@@ -24,7 +24,8 @@
 - Rules are VERSIONED (`RULES` in sim-core.js). A match stores the version (and map seed) it started with, so stored games always replay exactly. New games use `LATEST_RULES`.
   - 1: original (villages, 100/turn each, original damage).
   - 2: faster kills: same type vs same type dies in 2 hits from full health (base 6); the triangle's winner (soldier > spearman > knight > soldier) kills outright even when hurt.
-  - 3 (current): rules 2 plus the gold economy: no villages; 140 gold blocks per side (10,500 gold) underground in columns 3-7 deep, random per match (seed) but mirrored so both sides dig the same; builders mine them for +75 at once; bases pay 50/turn. Only builders dig. Digging below your feet leaves a ladder in that cell and takes the builder down into the hole. Units (not knights) climb ladders; knights can step up one block. Gold shows in the layer view (▲▼).
+  - 3: rules 2 plus the gold economy: no villages; 140 gold blocks per side (10,500 gold) underground in columns 3-7 deep, random per match (seed) but mirrored so both sides dig the same; builders mine them for +75 at once; bases pay 50/turn. Only builders dig. Digging below your feet leaves a ladder in that cell and takes the builder down into the hole. Units (not knights) climb ladders; knights can step up one block. Gold shows in the layer view (▲▼).
+  - 4 (current): rules 3 plus each side starts with a builder (behind its 3 soldiers), and builders cost 500 (`costOf`; per-rules `costs`).
 
 ## Current code
 - `sim-core.js`: the deterministic sim (pure, no Three.js/DOM), browser script (`window.BlockSim`) or Node module. Action recording into the undo journal, `turnGroups`, `replayTurn`, `stepsFrom` (moves incl. ladders), `digTool`, ladders (`s.lad` set + `s.lh` hash, journaled via the undo snapshot).

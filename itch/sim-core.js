@@ -191,7 +191,11 @@ const RULES = {
 //     Only builders dig; every cell a builder digs gets ladders, which units (not knights) climb.
 //     Knights can step up one block like everyone else.
 RULES[3] = { ...RULES[2], villages: false, income: 50, goldValue: 75, goldMap: true, builderDigs: true, ladders: true, knightSteps: true };
-const LATEST_RULES = 3;
+//  4: each side also starts with a builder, and builders cost 500.
+RULES[4] = { ...RULES[3], startBuilder: true, costs: { builder: 500 } };
+const LATEST_RULES = 4;
+// What a unit costs under these rules.
+const costOf = (s, type) => ((RULES[s.rules || 1].costs || {})[type]) ?? UNIT_TYPES[type].cost;
 //                air grass dirt stone wood bedrock leaves gold
 const SOFT = [     0,   1,    1,   0,    1,   0,      1,     0 ];   // grass, dirt, wood, leaves: infantry can dig these
 const unitName = u => UNIT_TYPES[u.type].label + ' ' + (u.id + 1);
@@ -378,7 +382,8 @@ function newState(rules = LATEST_RULES, seed = 1) {
   const cx = W >> 1, cz = D >> 1;
   const spots = [];
   spots.push(...UNIT_SPAWNS);
-  const units = spots.map(([team, x, z], k) => ({ id: k, type: 'soldier', team, x, y: groundY(g, x, z), z, hp: MAX_HP, moved: false, acted: false, dead: false }));
+  if (R.startBuilder) spots.push([0, cx - SPAWN_OFFSET - 1, cz], [1, cx + SPAWN_OFFSET + 1, cz]);   // a builder behind each army
+  const units = spots.map(([team, x, z], k) => ({ id: k, type: k >= UNIT_SPAWNS.length ? 'builder' : 'soldier', team, x, y: groundY(g, x, z), z, hp: MAX_HP, moved: false, acted: false, dead: false }));
   const buildings = BUILDING_SPOTS.filter(([, , kind]) => kind === 'base' || R.villages !== false)
     .map(([x, z, kind, owner]) => ({ kind, owner, x, y: groundY(g, x, z), z, cp: CAPTURE_PTS, capBy: -1 }));
   return { rules, seed, lad: R.ladders ? new Set() : undefined, lh: 0, g, units, buildings, gold: [START_GOLD, START_GOLD], built: false, winner: -1, team: 0, turn: 1, moves: 0, events: [], loot: [], nextLoot: 1, inv: [0, 0, 0, 0, 0, 0, 0],
@@ -571,7 +576,7 @@ function capture(s, u) {
 const baseOf = (s, team) => s.buildings.find(b => b.kind === 'base' && b.owner === team) || null;
 function canBuild(s, type) {
   const b = baseOf(s, s.team), t = UNIT_TYPES[type];
-  if (s.winner >= 0 || !b || !t || s.built || s.gold[s.team] < t.cost) return false;
+  if (s.winner >= 0 || !b || !t || s.built || s.gold[s.team] < costOf(s, type)) return false;
   return !unitAt(s, b.x, b.y, b.z) && !solidAt(s, b.x, b.y, b.z);
 }
 function buildUnit(s, type) {
@@ -579,7 +584,7 @@ function buildUnit(s, type) {
   const b = baseOf(s, s.team);
   const u = { id: s.units.length, type, team: s.team, x: b.x, y: b.y, z: b.z, hp: MAX_HP, moved: true, acted: true, dead: false };
   s.units.push(u);                               // new units wait until next turn
-  s.gold[s.team] -= UNIT_TYPES[type].cost;
+  s.gold[s.team] -= costOf(s, type);
   s.built = true;
   s.moves++;
   settleUnits(s);
@@ -911,7 +916,7 @@ const BlockSim = {
   TEAM_NAMES, TEAM_COLORS, TYPES, UNIT_TYPES, DAMAGE, RULES, LATEST_RULES, damageOf,
   idx, inGrid, mix, unitName, cellKey, newState, stateHash,
   solidAt, unitAt, stepTo, stepsFrom, moveOf, moveRange, moveUnit, canDig, digTool, dig, canAttack, attack, hasLadder, climbsLadders,
-  canCapture, capture, canBuild, buildUnit, incomeOf,
+  canCapture, capture, canBuild, buildUnit, incomeOf, costOf,
   beginAction, endAction, undo, redo, endTurn, gravityStep, waterStep, resolve,
   turnGroups, runGroup, replayTurn, finishTurn, MAX_GROUPS,
 };
