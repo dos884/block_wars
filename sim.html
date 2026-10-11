@@ -2014,14 +2014,16 @@ function turnStarted(quiet) {
   if (!quiet) flash(hurt.length ? hurt.join(', ') : botGame ? (S.team === BOT ? 'The bot is moving…' : 'Your turn')
     : !NET.id ? TEAM_NAMES[S.team] + "'s turn" : S.team === NET.team ? 'Your turn' : 'Waiting for ' + oppName());
 }
-/* ---------- Bot ("Play vs bot"): Red. Builders mine the gold, fighters defend home and attack in waves ----------
-   Waves grow with the square root of the bot's army: every few turns it sends fighters worth ~10 × sqrt(army cost)
-   at your base. Anyone capturing the bot's base is attacked first, by every fighter that can reach it. */
+/* ---------- Bot ("Play vs bot"): Red. It cheats: no economy, units simply appear at its base ----------
+   Every WAVE_EVERY turns a wave worth WAVE_K × sqrt(turn) gold appears and marches on your base. Waves "buy" the
+   priciest units costing at most half the budget, so they start cheap (soldiers, spearmen) and grow into archers,
+   knights and Aerial Screws. A few guards stay home (2, +1 every 10 turns), replaced for free when lost. Anyone
+   capturing the bot's base is attacked first by every bot unit that can reach. */
 let botGame = false, botBusy = false;
-const BOT = 1, WAVE_EVERY = 3, WAVE_K = 10, BOT_STEP_MS = 220;
-const FIGHT_CYCLE = ['soldier', 'spearman', 'archer', 'soldier', 'knight', 'spearman', 'screw'];
-const bot = { wave: new Set(), targets: new Map(), turns: 0, built: 0 };
-function botReset() { bot.wave = new Set(); bot.targets = new Map(); bot.turns = 0; bot.built = 0; }
+const BOT = 1, WAVE_EVERY = 5, WAVE_K = 134;        // first wave (turn 5): ~300 gold
+let botStepMs = 220;                                 // pause between bot actions (debug can set 0 for fast simulations)
+const bot = { wave: new Set(), lastWave: 0, guardsMade: 0 };
+function botReset() { bot.wave = new Set(); bot.lastWave = 0; bot.guardsMade = 0; }
 const at = (x, y, z) => ({ x, y, z });
 const md = (a, x, z) => Math.abs(a.x - x) + Math.abs(a.z - z);
 const cellsOf = u => [...moveRange(S, u, moveOf(u)).keys()].map(k => k.split(',').map(Number));
@@ -2057,31 +2059,10 @@ async function botStep(acts) {
   const ok = runGroup(S, acts);
   animActs(acts);
   hiddenLoot.clear(); syncUnitGroups(); playEvents(); rebuildChanged(); refreshHud();
-  await sleep(BOT_STEP_MS);
+  if (botStepMs) await sleep(botStepMs);
   return ok;
 }
 const moveAct = (u, c) => (c && (c[0] !== u.x || c[1] !== u.y || c[2] !== u.z)) ? [{ t: 'move', u: u.id, x: c[0], y: c[1], z: c[2] }] : [];
-const goldIn = (x, z, below = H) => { for (let y = 1; y < below; y++) if (S.g[idx(x, y, z)] === GOLD) return true; return false; };
-async function botBuilder(u) {
-  let t = bot.targets.get(u.id);
-  if (!t || !goldIn(t[0], t[1])) {                     // the nearest gold column on our half that no other builder took
-    const taken = new Set([...bot.targets].filter(([id]) => id !== u.id).map(([, c]) => c.join()));
-    let bd = Infinity; t = null;
-    for (let z = 0; z < D; z++) for (let x = W >> 1; x < W; x++) {
-      if (taken.has(x + ',' + z) || !goldIn(x, z)) continue;
-      const d = md(u, x, z);
-      if (d < bd) { bd = d; t = [x, z]; }
-    }
-    if (t) bot.targets.set(u.id, t); else bot.targets.delete(u.id);
-  }
-  if (!t) return;
-  if (u.x !== t[0] || u.z !== t[1]) await botStep(moveAct(u, botCellToward(u, t[0], t[1])));
-  for (let n = 0; n < 3; n++) {                        // standing on it: dig straight down (ladders, mining the gold)
-    const b = S.units[u.id];
-    if (b.x !== t[0] || b.z !== t[1] || !goldIn(b.x, b.z, b.y) || !canDig(S, b, b.x, b.y - 1, b.z)) break;
-    await botStep([{ t: 'dig', u: b.id, x: b.x, y: b.y - 1, z: b.z }]);
-  }
-}
 async function botFighter(u, threat) {
   const base = ourBase(), goal = theirBase();
   // 1. Whoever is capturing our base, if we can reach them; 2. any enemy we can hit (weakest first).
@@ -2104,33 +2085,53 @@ async function botFighter(u, threat) {
   const [gx, gz] = near ? [near.x, near.z] : base ? [base.x - 3, base.z + ((u.id % 5) - 2) * 2] : [u.x, u.z];
   if (md(u, gx, gz) > 0) await botStep(moveAct(u, botCellToward(u, gx, gz)));
 }
+// The bot cheats: a free unit appears on the nearest open spot around its base. It acts from its next turn.
+function botSpawn(type) {
+  const base = ourBase();
+  if (!base) return null;
+  for (let r = 1; r <= 5; r++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+    if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+    const x = base.x + dx, z = base.z + dz;
+    if (x < 0 || x >= W || z < 0 || z >= D) continue;
+    let y = H; while (y > 1 && !S.g[idx(x, y - 1, z)]) y--;
+    if (y >= H || S.w[idx(x, y, z)] || S.units.some(v => !v.dead && v.x === x && v.y === y && v.z === z)) continue;
+    const u = { id: S.units.length, type, team: BOT, x, y, z, hp: MAX_HP, moved: true, acted: true, dead: false };
+    S.units.push(u);
+    return u;
+  }
+  return null;
+}
+// What a wave buys with its budget: the priciest units costing at most half of it (at least a soldier).
+function waveTypes(budget) {
+  const prices = typesFor(S).filter(t => t !== 'builder').map(t => [t, costOf(S, t)]).sort((a, b) => b[1] - a[1]);
+  const cap = Math.max(costOf(S, 'soldier'), budget / 2), out = [];
+  while (budget >= costOf(S, 'soldier')) {
+    const pick = prices.find(([, c]) => c <= Math.min(budget, cap));
+    if (!pick) break;
+    out.push(pick[0]); budget -= pick[1];
+  }
+  return out;
+}
 async function botTurn() {
   botBusy = true; refreshHud();
-  bot.turns++;
   const mine = () => S.units.filter(v => !v.dead && v.team === BOT);
-  for (const u of mine().filter(v => v.type === 'builder')) { if (S.winner >= 0) break; await botBuilder(u); }
-  // A new wave every few turns: the home fighters closest to your base, worth ~10 × sqrt(army cost).
-  const fighters = () => mine().filter(v => v.type !== 'builder');
-  if (bot.turns % WAVE_EVERY === 0 && theirBase()) {
-    const power = fighters().reduce((n, v) => n + UNIT_TYPES[v.type].cost, 0), goal = theirBase();
-    let budget = WAVE_K * Math.sqrt(power);
-    for (const v of fighters().filter(v => !bot.wave.has(v.id)).sort((a, b) => md(a, goal.x, goal.z) - md(b, goal.x, goal.z))) {
-      if (budget <= 0) break;
-      bot.wave.add(v.id); budget -= UNIT_TYPES[v.type].cost;
-    }
-  }
-  for (const u of fighters()) {
+  for (const u of mine()) {                           // everyone acts: defend the base first, waves march, guards hold
     if (S.winner >= 0) break;
     const base = ourBase(), cap = base && base.capBy >= 0 ? S.units[base.capBy] : null;
     const threat = cap && !cap.dead && cap.team !== BOT ? cap : null;
     if (!S.units[u.id].dead && !S.units[u.id].moved) await botFighter(S.units[u.id], threat);
   }
-  // Build: up to 2 builders while there's gold to mine, otherwise fighters in a fixed mix.
   if (S.winner < 0) {
-    const builders = mine().filter(v => v.type === 'builder').length;
-    const want = builders < 2 && bot.targets.size + 1 > builders ? 'builder' : FIGHT_CYCLE[bot.built % FIGHT_CYCLE.length];
-    const pick = canBuild(S, want) ? want : canBuild(S, 'soldier') ? 'soldier' : null;
-    if (pick) { await botStep([{ t: 'build', type: pick }]); if (pick !== 'builder') bot.built++; }
+    if (S.turn % WAVE_EVERY === 0 && bot.lastWave !== S.turn) {          // a new wave appears
+      bot.lastWave = S.turn;
+      for (const t of waveTypes(WAVE_K * Math.sqrt(S.turn))) { const u = botSpawn(t); if (u) bot.wave.add(u.id); }
+    }
+    const guards = mine().filter(v => !bot.wave.has(v.id) && v.type !== 'builder').length;
+    if (guards < 2 + Math.floor(S.turn / 10)) {                          // top up the guards, one a turn
+      const u = botSpawn(['soldier', 'spearman', 'archer'][bot.guardsMade++ % 3]);
+      if (u) bot.wave.delete(u.id);
+    }
+    syncUnitGroups(); refreshHud();
   }
   botBusy = false;
   if (S.winner >= 0) { refreshHud(); return; }
@@ -2141,7 +2142,14 @@ async function botTurn() {
 }
 // Start the bot's turn once any collapse or flood from your last action has finished.
 function runBotSoon() {
-  const go = () => { if (falling) return setTimeout(go, 150); botTurn().catch(e => { botBusy = false; console.error(e); refreshHud(); }); };
+  const go = () => {
+    if (falling) return setTimeout(go, 150);
+    botTurn().catch(e => {                           // never leave the game stuck on the bot's turn
+      console.error(e); botBusy = false;
+      if (S.team === BOT && S.winner < 0) { endTurn(S); turnStarted(); }
+      refreshHud();
+    });
+  };
   setTimeout(go, 400);
 }
 
@@ -2995,6 +3003,11 @@ if (DEBUG) window.BW_DEBUG = {
   },
   select(k) { selectUnit(k); },
   anim(k, kind) { playAnim(k, kind, S.units[k].x + 1.5, S.units[k].z + 0.5); },   // test an attack/dig animation
+  // Play-testing against the bot from a script: start a bot game, run Blue's actions, watch the bot.
+  startBot(seed) { if (lobbyOpen) closeLobby(); botGame = true; newGame(undefined, seed); botReset(); stored('bw:tutorialDone', true); },
+  run(acts) { const ok = runGroup(S, acts); animActs(acts); hiddenLoot.clear(); syncUnitGroups(); rebuildChanged(); refreshHud(); return ok; },
+  botBusy: () => botBusy || falling || (botGame && S.team === BOT),
+  fast(on) { botStepMs = on ? 0 : 220; },
   atlas: () => atlasTex.image.toDataURL('image/png'),      // the generated block textures, 32x32 per tile
   // Point the Commander camera from (px,py,pz) at (tx,ty,tz).
   cam(px, py, pz, tx, ty, tz) {

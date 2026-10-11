@@ -113,7 +113,7 @@ function generate(seed, w) {
 /* ---------- Gold (rules 3): clusters of gold blocks underground, random per match but fair ----------
    Every cluster on Blue's half has a mirror image on Red's half (x → W-1-x), each block the same depth (3-7) under
    its own column's ground, so both sides dig exactly as far for the same gold. One pair sits near the middle. */
-function placeGold(g, goldSeed) {
+function placeGold(g, goldSeed, layout) {
   const cx = W >> 1;
   let n = 0;
   const next = () => rnd(n++, goldSeed, 7777);
@@ -128,8 +128,8 @@ function placeGold(g, goldSeed) {
   // so whichever of those layers you look at (the layer view), every cluster shows up in it.
   // Columns are never reused, so the total is exact: (6 x 4 + 4) columns x 5 blocks = 140 blocks = 10,500 gold a side.
   const used = new Set();
-  const cluster = (x0, x1, columns) => {
-    let x = x0 + next() % (x1 - x0 + 1), z = 6 + next() % (D - 12);
+  const cluster = (x0, x1, columns, z0 = 6, z1 = D - 7) => {
+    let x = x0 + next() % (x1 - x0 + 1), z = z0 + next() % (z1 - z0 + 1);
     for (let made = 0, tries = 0; made < columns && tries < 200; tries++) {
       if (!used.has(x + z * W)) {
         used.add(x + z * W);
@@ -141,6 +141,13 @@ function placeGold(g, goldSeed) {
       z = Math.max(2, Math.min(D - 3, z + (d === 2) - (d === 3)));
     }
   };
+  if (layout === 'grid') {                              // rules 6: a cluster somewhere in every ~15 x 15 square
+    for (let x0 = 0; x0 < cx; x0 += 15) for (let z0 = 0; z0 < D; z0 += 15) {
+      const x1 = Math.min(cx - 2, x0 + 14), z1 = Math.min(D - 3, z0 + 14);
+      if (x1 - x0 >= 3 && z1 - z0 >= 3) cluster(Math.max(2, x0), x1, 4, Math.max(2, z0), z1);
+    }
+    return;
+  }
   for (let k = 0; k < 6; k++) cluster(4, cx - 6, 4);   // six on each side, anywhere
   cluster(cx - 7, cx - 2, 4);                           // one pair close to the middle, to fight over                                        // one bigger pair close to the middle
 }
@@ -210,7 +217,9 @@ RULES[5] = {
     screw:    { soldier: 5, spearman: 4, knight: 4, archer: 4, builder: 6, screw: 6 },
   },
 };
-const LATEST_RULES = 5;
+//  6: much more gold, spread evenly but randomly: a 4-column cluster in every ~15 x 15 square of each half.
+RULES[6] = { ...RULES[5], goldLayout: 'grid' };
+const LATEST_RULES = 6;
 // Flying (rules 5+): which units fly, which can hit a flyer, and how high a flyer hovers over a column.
 const flies = (s, u) => !!UNIT_TYPES[u.type].flies && !!RULES[s.rules || 1].flyer;
 const hitsFlyers = type => type === 'archer' || type === 'spearman' || type === 'screw';
@@ -399,7 +408,7 @@ function newState(rules = LATEST_RULES, seed = 1) {
   if (!R) throw new Error('unknown rules version ' + rules);
   const w = new Uint8Array(N);
   const g = generate(SEED, w);
-  if (R.goldMap) placeGold(g, seed);
+  if (R.goldMap) placeGold(g, seed, R.goldLayout);
   const cx = W >> 1, cz = D >> 1;
   const spots = [];
   spots.push(...UNIT_SPAWNS);
