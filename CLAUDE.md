@@ -56,7 +56,7 @@ Sim details:
 - Logins stay on the device (recovery codes were tried and dropped 2026-10-10). Google link is the way to move devices once set up.
 - No Elo. Monetization: donations/cosmetics, no ads in gameplay. Closed source for now.
 - Donations: Ko-fi (https://ko-fi.com/shmooti): a button in the lobby, and a big one in the panel that replaces the controls while you wait for the opponent's turn.
-- itch.io is DROPPED (2026-10-10: friend invites didn't work from inside itch). The `itch/` folder, `tools/build-itch.js` and the server's itch CORS stay in place but are unused; don't maintain them.
+- itch.io is back in use (2026-10-11), at https://dos884.itch.io/cube-wars (it was briefly dropped because friend invites failed from inside itch). Rebuild the upload with `node tools/build-itch.js` → `itch/cube-wars-itch.zip` (index.html + sim-core.js + three.min.js, talks to cubewars.io; the server allows itch's domains via CORS) and push it; he uploads the zip to itch himself.
 - Quick play is switched off for now (`QUICK_PLAY = false` in sim.html; server code kept). Lobby buttons: Play a friend, Play vs bot, Play yourself.
 - Bot ("Play vs bot", local in the browser, you are Blue): builders (up to 2) walk to the bot's nearest gold columns, dig down and mine; fighters in a fixed mix hold a line in front of its base and engage anything within 10 tiles; ANY unit capturing its base is attacked first by every fighter that can reach; every 3 bot turns a wave worth ~10 × sqrt(total fighter cost) marches on your base, attacking on the way and capturing it. One difficulty. Code: the "Bot" section in sim.html (`botTurn`).
 - Modding later: sandboxed interpreter (QuickJS or Lua in WASM), API = primitives + action registry + events.
