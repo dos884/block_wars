@@ -264,7 +264,7 @@ body.waiting #controls .leftpad, body.waiting #controls .cgrid{display:none}
   <div class="chip left">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px"><span class="dot" id="udot"></span><b id="uname">Unit</b></div>
     <div class="sub"><span id="ustate">Ready</span> · <span id="pos"></span></div>
-    <div class="sub">Turn <b id="turn">1</b> · Wood <b id="invwood">0</b></div>
+    <div class="sub">Turn <b id="turn">1</b><span id="dnWrap" hidden> · <b id="daynight"></b></span> · Wood <b id="invwood">0</b></div>
     <div class="sub">Gold <b id="gold">0</b> <span id="income"></span></div>
     <div id="netRow" hidden><span class="sub" id="netLine"></span><button class="btn" id="shareBtn" style="padding:2px 8px;font-size:12px;box-shadow:0 2px 0 var(--ink)" hidden>Invite</button></div>
     <div id="status"></div>
@@ -451,7 +451,7 @@ body.waiting #controls .leftpad, body.waiting #controls .cgrid{display:none}
    SIM — lives in sim-core.js (shared with the server). The view only reads it and calls its actions.
    ========================================================= */
 const {
-  W, D, H, WD, AIR, GRASS, DIRT, STONE, WOOD, BEDROCK, LEAVES, GOLD, WFULL, MAX_HP, CAPTURE_PTS, INCOME,
+  W, D, H, WD, AIR, GRASS, DIRT, STONE, WOOD, BEDROCK, LEAVES, GOLD, WALL, ROOF, nightAt, roundsLeft, WFULL, MAX_HP, CAPTURE_PTS, INCOME,
   TEAM_NAMES, TEAM_COLORS, TYPES, UNIT_TYPES,
   idx, inGrid, mix, unitName, cellKey, newState, stateHash,
   stepTo, stepsFrom, moveOf, moveRange, moveUnit, canDig, digTool, dig, canAttack, attack, hasLadder, climbsLadders,
@@ -462,7 +462,7 @@ const {
 /* =========================================================
    VIEW — Three.js. Reads the sim; walking is a visual that commits snapped cells.
    ========================================================= */
-const MAT_COLOR = { 1: 0x6aa84f, 2: 0x8b5a34, 3: 0x8e9198, 4: 0xb4864f, 5: 0x3a3a42, 6: 0x3f8f3b, 7: 0xf2c230 };
+const MAT_COLOR = { 1: 0x6aa84f, 2: 0x8b5a34, 3: 0x8e9198, 4: 0xb4864f, 5: 0x3a3a42, 6: 0x3f8f3b, 7: 0xf2c230, 8: 0xe9e1cf, 9: 0xa8432f };
 const PLACEABLE = [{ m: STONE, name: 'Stone' }, { m: DIRT, name: 'Dirt' }, { m: WOOD, name: 'Wood' }, { m: LEAVES, name: 'Leaves' }];
 
 let S = newState();
@@ -490,10 +490,38 @@ if (window.matchMedia) {
   if (mq.addEventListener) mq.addEventListener('change', applyTheme);
 }
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0x6b7a86, 0.75));
+const hemi = new THREE.HemisphereLight(0xffffff, 0x6b7a86, 0.75);
+scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffffff, 0.7);
 sun.position.set(0.6, 1, 0.35);
 scene.add(sun);
+/* ---------- Day and night (rules 9): the sky, the light and the stars follow the round ---------- */
+const NIGHT_SKY = new THREE.Color(0x0b1230), DAY_SUN = new THREE.Color(0xffffff), MOON = new THREE.Color(0x9fb4ff);
+let dayAmt = 1;                                  // 1 = full day, 0 = full night; eases between the two
+const stars = (() => {
+  const p = [];
+  let seed = 11;
+  const r = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  for (let k = 0; k < 700; k++) {
+    const a = r() * Math.PI * 2, h = 0.08 + r() * 0.92, c = Math.sqrt(1 - h * h);
+    p.push(Math.cos(a) * c * 120, h * 120, Math.sin(a) * c * 120);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
+  const m = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 2, sizeAttenuation: false, transparent: true, opacity: 0, fog: false, depthWrite: false }));
+  m.frustumCulled = false;
+  scene.add(m);
+  return m;
+})();
+function updateDayNight(dt) {
+  const target = nightAt(S) ? 0 : 1;
+  dayAmt = reduceMotion ? target : dayAmt + (target - dayAmt) * (1 - Math.pow(0.3, dt));
+  if (Math.abs(dayAmt - target) < 0.002) dayAmt = target;
+  hemi.intensity = 0.3 + 0.45 * dayAmt;
+  sun.intensity = 0.2 + 0.5 * dayAmt;
+  sun.color.copy(MOON).lerp(DAY_SUN, dayAmt);
+  stars.position.copy(camera.position);
+}
 
 // Underground vision: when the selected unit is underground, everything farther than uFogR from it fades to black.
 const sphereFog = { uFog: { value: 0 }, uFogC: { value: new THREE.Vector3() }, uFogR: { value: 18 } };
@@ -513,7 +541,7 @@ function withSphereFog(sh) {
 
 // Block textures: one 32x32 pixel tile per material (grass has a top and a side), in a single atlas.
 // A faint darker border on every tile draws the lines between blocks.
-const TILE = 32, TILES = 8;                     // 0 grass top, 1 grass side, 2 dirt, 3 stone, 4 wood, 5 bedrock, 6 leaves, 7 gold
+const TILE = 32, TILES = 10;                    // 0 grass top, 1 grass side, 2 dirt, 3 stone, 4 wood, 5 bedrock, 6 leaves, 7 gold, 8 hut wall, 9 roof
 const atlasTex = (() => {
   const c = document.createElement('canvas'); c.width = TILE * TILES; c.height = TILE;
   const ctx = c.getContext('2d'), img = ctx.createImageData(c.width, c.height);
@@ -550,12 +578,21 @@ const atlasTex = (() => {
   speckle(5, 0x3a3a42, [[0x26262c, 0.25], [0x55555e, 0.15]], 0.15);                  // bedrock
   speckle(6, 0x3f8f3b, [[0x2f6f2c, 0.25], [0x5aa553, 0.10]], 0.1);                   // leaves
   speckle(7, 0xdcaa22, [[0xffe066, 0.16], [0xa87a12, 0.14], [0xfff6c8, 0.03]], 0.1); // gold
+  speckle(8, 0xe9e1cf, [[0xd8cfb8, 0.12], [0xf6f0e2, 0.08]], 0.05);                  // hut wall: whitewash…
+  for (let k = 0; k < TILE; k++) for (const [x, y] of [[k, 2], [k, 3], [k, 28], [k, 29], [2, k], [3, k], [28, k], [29, k]])
+    put(8, x, y, rgb(0x6e4a2c), 0.95 + rnd() * 0.1);                                // …in a timber frame
+  for (let y = 12; y < 22; y++) for (let x = 12; x < 20; x++)                        // a little dark window
+    put(8, x, y, rgb(x === 15 || x === 16 || y === 16 ? 0x6e4a2c : 0x2a2f3a), 1);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {                    // roof: rows of clay tiles
+    const row = y >> 2, edge = (y & 3) === 3 || ((x + (row & 1) * 3) % 6 === 0);
+    put(9, x, y, rgb(edge ? 0x7a2e20 : rnd() < 0.15 ? 0xc0573f : 0xa8432f), 0.92 + rnd() * 0.12);
+  }
   ctx.putImageData(img, 0, 0);
   const t = new THREE.CanvasTexture(c);
   t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
   return t;
 })();
-const tileOf = (m, face) => m === GRASS ? (face === 't' ? 0 : face === 'b' ? 2 : 1) : { 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7 }[m];
+const tileOf = (m, face) => m === GRASS ? (face === 't' ? 0 : face === 'b' ? 2 : 1) : { 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9 }[m];
 
 // Blocks: one mesh per chunk made of only the faces that border open space, so blocks meet without gaps.
 const blockGeo = new THREE.BoxGeometry(0.97, 0.97, 0.97);     // still used by the falling-block effect
@@ -596,7 +633,8 @@ function openCell(X, Y, Z) {
   if (Y < 0 || X < 0 || X >= W || Z < 0 || Z >= D) return false;
   if (Y >= H) return true;
   if (hiddenCell(X, Y, Z)) return true;
-  return S.g[idx(X, Y, Z)] === AIR;
+  const m = S.g[idx(X, Y, Z)];
+  return m === AIR || m === ROOF;               // a roof is a block in the sim but drawn as a slope: what's beside it shows
 }
 // Each face: outward normal, its 4 corners counter-clockwise seen from outside, and which texture (side/top/bottom).
 const FACES = [
@@ -608,6 +646,31 @@ const FACES = [
   [[0, -1, 0], [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]], 'b'],
 ];
 const CORNER_UV = [[0, 0], [1, 0], [1, 1], [0, 1]];
+// A roof block is drawn as a gable roof: two slopes with a little overhang, the ridge along x or z (fixed per cell),
+// whitewashed gable ends, and an underside only where it can be seen.
+function roofFaces(x, y, z, i, shade, pos, nor, uv, col, ind) {
+  const o = 0.12, top = 0.9, alongX = (mix(i * 13 + 5) & 1) === 0;
+  // local a = along the ridge, b = across it
+  const P = (a, h, b) => alongX ? [x + a, y + h, z + b] : [x + b, y + h, z + a];
+  const V = (a, h, b) => alongX ? [a, h, b] : [b, h, a];
+  const tile = (t, c) => [(t * TILE + 0.5 + c[0] * (TILE - 1)) / (TILE * TILES), (0.5 + c[1] * (TILE - 1)) / TILE];
+  // Add a flat polygon facing direction n (its corners get flipped if they wind the wrong way).
+  const poly = (pts, n, t, uvs) => {
+    const [p0, p1, p2] = pts, e1 = p1.map((v, k) => v - p0[k]), e2 = p2.map((v, k) => v - p0[k]);
+    const c = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+    if (c[0] * n[0] + c[1] * n[1] + c[2] * n[2] < 0) { pts = pts.slice().reverse(); uvs = uvs.slice().reverse(); }
+    const l = Math.hypot(...n), base = pos.length / 3;
+    pts.forEach((p, k) => { pos.push(...p); nor.push(n[0] / l, n[1] / l, n[2] / l); uv.push(...tile(t, uvs[k])); col.push(shade, shade, shade); });
+    for (let k = 1; k + 1 < pts.length; k++) ind.push(base, base + k, base + k + 1);
+  };
+  const q = [[0, 0], [1, 0], [1, 1], [0, 1]];
+  poly([P(-o, -o, -o), P(1 + o, -o, -o), P(1 + o, top, 0.5), P(-o, top, 0.5)], V(0, 0.5, -1), 9, q);   // slopes
+  poly([P(1 + o, -o, 1 + o), P(-o, -o, 1 + o), P(-o, top, 0.5), P(1 + o, top, 0.5)], V(0, 0.5, 1), 9, q);
+  const t = [[0, 0], [1, 0], [0.5, top]];
+  poly([P(0, 0, 0), P(0, 0, 1), P(0, top, 0.5)], V(-1, 0, 0), 8, t);                                     // gable ends
+  poly([P(1, 0, 1), P(1, 0, 0), P(1, top, 0.5)], V(1, 0, 0), 8, t);
+  if (openCell(x, y - 1, z)) poly([[x, y, z], [x + 1, y, z], [x + 1, y, z + 1], [x, y, z + 1]], [0, -1, 0], 8, q);
+}
 function rebuildChunk(k) {
   const g = S.g, cx0 = (k % NCX) * CH, cz0 = ((k / NCX) | 0) * CH;
   const pos = [], nor = [], uv = [], col = [], ind = [];
@@ -616,6 +679,7 @@ function rebuildChunk(k) {
     if (!m || hiddenCell(x, y, z)) continue;
     let shade = 0.9 + (mix(i * 31 + 7) % 11) / 100;                  // a little variation from block to block
     if (hiddenCell(x, y + 1, z)) shade *= 0.62;                        // the cut surface reads as a slice
+    if (m === ROOF) { roofFaces(x, y, z, i, shade, pos, nor, uv, col, ind); continue; }
     for (const [n, corners, face] of FACES) {
       if (!openCell(x + n[0], y + n[1], z + n[2])) continue;
       const t = tileOf(m, face), base = pos.length / 3;
@@ -1138,6 +1202,91 @@ function syncUnitGroups() {
   if (sel >= S.units.length) sel = 0;
 }
 syncUnitGroups();
+// "Day · 3 rounds to dusk" in the HUD, and a message when night falls or the sun rises.
+let dnSeen = { s: null, night: false };
+function dayNightHud() {
+  const L = (BlockSim.RULES[S.rules || 1] || {}).dayLength;
+  $('dnWrap').hidden = !L;
+  if (!L) return;
+  const night = nightAt(S), n = roundsLeft(S);
+  $('daynight').textContent = (night ? '🌙 Night' : '☀️ Day') + ' · ' +
+    (n === 1 ? (night ? 'dawn next round' : 'dusk next round') : n + ' rounds to ' + (night ? 'dawn' : 'dusk'));
+  if (dnSeen.s === S && dnSeen.night !== night && !lobbyOpen) flash(night ? '🌙 Night falls' : '☀️ The sun rises');
+  dnSeen = { s: S, night };
+}
+
+/* ---------- Villagers: people in plain clothes wandering around each village (view only, never in the sim) ----------
+   They stroll between the huts by day and stay indoors at night. */
+const VILLAGER_LOOKS = [            // shirt, shirt shade, hair, hair highlight
+  ['#c9b48a', '#a8946c', '#5a3a22', '#7a5232'], ['#7d9a5a', '#5f7a42', '#2a1d14', '#4a3424'], ['#e8e1cf', '#c4bca8', '#c9a14a', '#e2c070'],
+  ['#9a6b43', '#7a5232', '#3a2a1e', '#5a4030'], ['#8a8f9a', '#6b707a', '#6e4a2c', '#8a5a33'],
+];
+const villagerTexCache = new Map();
+function villagerTexture(look, frame) {
+  const key = look + ':' + frame;
+  if (villagerTexCache.has(key)) return villagerTexCache.get(key);
+  const { rows } = artFor('villager', frame), [U, u, H1, h1] = VILLAGER_LOOKS[look];
+  const pal = Object.assign({}, SPRITE_PAL, { U, u, H: H1, h: h1 });
+  const c = document.createElement('canvas'); c.width = rows[0].length; c.height = rows.length;
+  const ctx = c.getContext('2d');
+  rows.forEach((row, y) => { for (let x = 0; x < row.length; x++) if (row[x] !== '.') { ctx.fillStyle = pal[row[x]]; ctx.fillRect(x, y, 1, 1); } });
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
+  villagerTexCache.set(key, t);
+  return t;
+}
+let villagers = [], villagersOf = null;
+// The height a villager stands at: on top of the column's highest block (huts are avoided, so it's the ground).
+function standAt(x, z) { let y = H - 1; while (y > 0 && S.g[idx(x, y - 1, z)] === AIR) y--; return y; }
+function villagerSpot(v, k) {
+  for (let n = 0; n < 12; n++) {
+    const x = v.x + ((mix(k * 7919 + n * 31 + 1) % 7) - 3), z = v.z + ((mix(k * 104729 + n * 17 + 2) % 7) - 3);
+    if (!inGrid(x, 1, z)) continue;
+    const y = standAt(x, z), m = S.g[idx(x, y - 1, z)];
+    if (m !== WALL && m !== ROOF && !S.w[idx(x, y, z)]) return [x + 0.5, y, z + 0.5];
+  }
+  return [v.x + 0.5, standAt(v.x, v.z), v.z + 0.5];
+}
+function syncVillagers() {
+  if (villagersOf === S.villages) return;
+  for (const p of villagers) scene.remove(p.mesh);
+  villagers = [];
+  villagersOf = S.villages;
+  (S.villages || []).forEach((v, vi) => {
+    for (let k = 0; k < 3; k++) {
+      const look = (vi * 3 + k) % VILLAGER_LOOKS.length;
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.66, 1.0), new THREE.MeshBasicMaterial({ map: villagerTexture(look, 'idle'), alphaTest: 0.5, side: THREE.DoubleSide }));
+      const id = vi * 3 + k, [x, y, z] = villagerSpot(v, id * 5);
+      mesh.position.set(x, y + 0.5, z);
+      scene.add(mesh);
+      villagers.push({ v, id, look, mesh, pos: new THREE.Vector3(x, y, z), to: null, wait: 1 + (id % 4), step: 0 });
+    }
+  });
+}
+function updateVillagers(now, dt) {
+  syncVillagers();
+  const out = dayAmt > 0.5 && !lobbyOpen;
+  for (const p of villagers) {
+    let moving = false;
+    if (!reduceMotion && out) {
+      if (p.to) {
+        const d = tmpV.copy(p.to).sub(p.pos); d.y = 0;
+        const len = d.length();
+        if (len < 0.05) { p.to = null; p.wait = 1.5 + (mix(p.id * 13 + (now | 0)) % 40) / 10; }
+        else { p.pos.addScaledVector(d, Math.min(1, 0.7 * dt / len)); p.pos.y += (p.to.y - p.pos.y) * Math.min(1, dt * 6); moving = true; }
+      } else if ((p.wait -= dt) <= 0) {
+        const [x, y, z] = villagerSpot(p.v, p.id * 5 + (++p.step));
+        p.to = new THREE.Vector3(x, y, z);
+      }
+    }
+    const frame = moving ? ['idle', 'walk1', 'idle', 'walk3'][Math.floor(now / 140 + p.id) % 4] : 'idle';
+    const map = villagerTexture(p.look, frame);
+    if (p.mesh.material.map !== map) p.mesh.material.map = map;
+    p.mesh.position.set(p.pos.x, p.pos.y + 0.5, p.pos.z);
+    p.mesh.rotation.y = Math.atan2(camera.position.x - p.pos.x, camera.position.z - p.pos.z);
+    p.mesh.visible = out && !hiddenCell(Math.floor(p.pos.x), Math.floor(p.pos.y + 1e-4), Math.floor(p.pos.z)) && !inDark(p.mesh.position);
+  }
+}
 // Red rings under enemies the selected unit can attack (Attack mode).
 const atkRings = [];
 function atkRing(k) {
@@ -1889,6 +2038,7 @@ function refreshHud() {
     : NET.id && !myTurn() ? (winnerNow() >= 0 ? 'Game over' : NET.sending ? 'Sending your turn…' : 'Waiting for ' + oppName())
     : u.acted ? 'Done this turn' : u.moved ? 'Moved · can still attack' : 'Ready · tap a blue tile';
   $('pos').textContent = `x${u.x} y${u.y} z${u.z}`;
+  dayNightHud();
   $('turn').textContent = S.turn + ' · ' + (NET.id && NET.team >= 0 ? (S.team === NET.team ? 'Your move' : oppName() + "'s move") : TEAM_NAMES[S.team] + "'s move");
   $('uname').textContent = unitName(u) + ' · ' + u.hp + ' HP';
   $('invwood').textContent = S.inv[WOOD];
@@ -2957,8 +3107,10 @@ function updateUnderground(dt) {
   if (fogOn < 0.005) fogOn = 0;
   sphereFog.uFog.value = fogOn;
   sphereFog.uFogC.value.set(walker.p.x, walker.p.y + 0.6, walker.p.z);
-  scene.background.copy(skyColor).lerp(BLACK, fogOn);
+  scene.background.copy(skyColor).lerp(NIGHT_SKY, 1 - dayAmt).lerp(BLACK, fogOn);
   scene.fog.color.copy(scene.background);
+  stars.material.opacity = (1 - dayAmt) * (1 - fogOn);
+  stars.visible = stars.material.opacity > 0.01;
 }
 // Outside the visible sphere underground, units and flags are hidden too.
 const inDark = p => fogOn > 0.5 && p.distanceTo(sphereFog.uFogC.value) > sphereFog.uFogR.value;
@@ -3045,7 +3197,9 @@ function frame(now) {
     camera.lookAt(camTarget);
   }
   updateGhost(dt);
+  updateDayNight(dt);
   updateUnderground(dt);
+  updateVillagers(now, dt);
   unitGroups.forEach((g, k) => {
     const u = S.units[k];
     if (!u) return;

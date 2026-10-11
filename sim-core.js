@@ -11,7 +11,7 @@
    ========================================================= */
 const W = 96, D = 96, H = 40;                  // the bases are ~5 turns apart at 6 tiles per turn
 const WD = W * D, N = W * D * H;
-const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, WOOD = 4, BEDROCK = 5, LEAVES = 6, GOLD = 7;
+const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, WOOD = 4, BEDROCK = 5, LEAVES = 6, GOLD = 7, WALL = 8, ROOF = 9;   // 8-9: village huts (rules 9)
 const SEED = 1;
 
 const idx = (x, y, z) => x + z * W + y * WD;
@@ -33,7 +33,7 @@ function terrainTop(x, z, seed) {
   const h = ((a * (S - fx) * (S - fz) + b * fx * (S - fz) + c * (S - fx) * fz + d * fx * fz) / (S * S)) | 0;
   return 28 + h;                                // surface at 28..34: ~30 layers of underground to dig
 }
-function generate(seed, w) {
+function generate(seed, w, villages = []) {
   const g = new Uint8Array(N);
   const heights = new Int32Array(WD);
   for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
@@ -95,6 +95,8 @@ function generate(seed, w) {
     if (trunks.some(([tx, tz]) => Math.max(Math.abs(tx - x), Math.abs(tz - z)) < 4)) continue; // canopies must not touch
     if (Math.abs(z - BZ) <= 2 && x >= BX0 - 2 && x <= BX1 + 2) continue;                        // keep clear of the bridge
     if (x >= cx - 14 && x <= cx + 14 && z >= LZ0 - 4 && z <= cz - 2) continue;                   // keep clear of the reservoir
+    if (villages.some(v => Math.abs(v.x - x) <= 5 && Math.abs(v.z - z) <= 5) ||                    // and of villages and their ponds
+        villages.some(v => Math.abs(v.px - x) <= 4 && Math.abs(v.pz - z) <= 4)) continue;
     trunks.push([x, z]);
     const base = heights[x + z * W];
     for (let t = 0; t < 3; t++) g[idx(x, base + t, z)] = WOOD;
@@ -107,7 +109,62 @@ function generate(seed, w) {
     leaf(x, base + 4, z + 1); leaf(x, base + 4, z - 1);
     placed++;
   }
+  for (const v of villages) buildVillage(g, w, heights, v);
   return g;
+}
+
+/* ---------- Villages (rules 9): a few huts around a dirt square, with a pond a few tiles away ----------
+   Random per match (the match seed) but mirrored left/right like the gold, away from bases, spawns,
+   the bridge and the reservoir. A hut is a wall block with a roof block on it (drawn as a triangular roof). */
+const HUT_SPOTS = [[-2, -2], [2, -2], [-2, 2], [2, 2], [0, -3], [-3, 0], [3, 0], [0, 3]];
+function villageSpots(seed, count) {
+  const cx = W >> 1, cz = D >> 1, out = [];
+  const BZ = cz + 16, BX0 = cx - 16, BX1 = BX0 + 30;
+  const clear = (x, z, r) => {                                 // nothing important within r of (x, z), on either side
+    for (const X of [x, W - 1 - x]) {
+      if (X - r < 2 || X + r > W - 3 || z - r < 2 || z + r > D - 3) return false;
+      if (Math.abs(X - (cx - BASE_X)) <= r + 4 && Math.abs(z - cz) <= r + 4) return false;
+      if (Math.abs(X - (cx + BASE_X)) <= r + 4 && Math.abs(z - cz) <= r + 4) return false;
+      if (UNIT_SPAWNS.some(([, ux, uz]) => Math.abs(ux - X) <= r + 3 && Math.abs(uz - z) <= r + 3)) return false;
+      if (Math.abs(X - cx) <= 2 + r && Math.abs(z - (cz + 16)) <= r + 4) return false;                  // the middle lane
+      if (X >= BX0 - 2 - r && X <= BX1 + 2 + r && Math.abs(z - BZ) <= 2 + r) return false;           // the bridge
+      if (X >= cx - 14 - r && X <= cx + 14 + r && z >= cz - 36 - r && z <= cz + 12 + r) return false; // the reservoir, its stairs, the base road
+    }
+    return true;
+  };
+  for (let tries = 0; out.length < count && tries < 4000; tries++) {
+    const r = rnd(tries, seed, 4242);
+    const x = 6 + r % (cx - 12), z = 6 + (r >>> 8) % (D - 12);
+    if (!clear(x, z, 3)) continue;
+    if (out.some(v => Math.abs(v.x - x) + Math.abs(v.z - z) < 18)) continue;
+    const dir = (r >>> 20) & 3, px = x + [6, 0, -6, 0][dir], pz = z + [0, 6, 0, -6][dir];
+    if (!clear(px, pz, 2)) continue;
+    const huts = HUT_SPOTS.filter((_, k) => (r >>> (22 + (k & 7))) & 1 || k < 4).slice(0, 5);
+    out.push({ x, z, px, pz, huts });
+  }
+  const mirrored = [];
+  for (const v of out) mirrored.push(v, { x: W - 1 - v.x, z: v.z, px: W - 1 - v.px, pz: v.pz, huts: v.huts.map(([dx, dz]) => [-dx, dz]) });
+  return mirrored;
+}
+function buildVillage(g, w, heights, v) {
+  const top = (x, z) => heights[x + z * W];
+  g[idx(v.x, top(v.x, v.z) - 1, v.z)] = DIRT;                  // the village square
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) g[idx(v.x + dx, top(v.x + dx, v.z + dz) - 1, v.z + dz)] = DIRT;
+  for (const [dx, dz] of v.huts) {
+    const x = v.x + dx, z = v.z + dz, y = top(x, z);
+    g[idx(x, y, z)] = WALL; g[idx(x, y + 1, z)] = ROOF;
+  }
+  // The pond: 3 x 3 columns, water up to one block under the lowest ground around it, 2 blocks deep.
+  let rim = H;
+  for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) rim = Math.min(rim, top(v.px + dx, v.pz + dz));
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+    const x = v.px + dx, z = v.pz + dz;
+    for (let y = rim - 2; y < H; y++) {
+      const i = idx(x, y, z);
+      g[i] = AIR;
+      if (y < rim) w[i] = WFULL;
+    }
+  }
 }
 
 /* ---------- Gold (rules 3): clusters of gold blocks underground, random per match but fair ----------
@@ -224,15 +281,18 @@ RULES[7] = { ...RULES[6], unlimitedBuild: true };
 //  8: builders can place a stone block (25 gold) or a ladder (10 gold) in an empty cell within reach (3), as many as
 //     they can pay for. Stone follows the usual support physics; a ladder needs a block next to it (sideways).
 RULES[8] = { ...RULES[7], place: { stone: 25, ladder: 10 } };
-const LATEST_RULES = 8;
+//  9: stone and ladders cost 5; archers shoot 2-9 tiles (+1 from 2+ blocks higher) but need a clear line (arrows stop
+//     at blocks); a day/night cycle (6 rounds each, no effect yet); 6 villages with huts and ponds (no effect yet).
+RULES[9] = { ...RULES[8], place: { stone: 5, ladder: 5 }, archerRange: 9, sight: true, dayLength: 6, villageCount: 3 };
+const LATEST_RULES = 9;
 // Flying (rules 5+): which units fly, which can hit a flyer, and how high a flyer hovers over a column.
 const flies = (s, u) => !!UNIT_TYPES[u.type].flies && !!RULES[s.rules || 1].flyer;
 const hitsFlyers = type => type === 'archer' || type === 'spearman' || type === 'screw';
 const typesFor = s => TYPES.filter(t => !UNIT_TYPES[t].flies || RULES[s.rules || 1].flyer);
 // What a unit costs under these rules.
 const costOf = (s, type) => ((RULES[s.rules || 1].costs || {})[type]) ?? UNIT_TYPES[type].cost;
-//                air grass dirt stone wood bedrock leaves gold
-const SOFT = [     0,   1,    1,   0,    1,   0,      1,     0 ];   // grass, dirt, wood, leaves: infantry can dig these
+//                air grass dirt stone wood bedrock leaves gold wall roof
+const SOFT = [     0,   1,    1,   0,    1,   0,      1,     0,    1,   1 ];   // grass, dirt, wood, leaves: infantry can dig these
 const unitName = u => UNIT_TYPES[u.type].label + ' ' + (u.id + 1);
 
 /* ---------- Buildings: villages give gold, each team's base builds units; capturing the enemy base wins ---------- */
@@ -412,7 +472,8 @@ function newState(rules = LATEST_RULES, seed = 1) {
   const R = RULES[rules];
   if (!R) throw new Error('unknown rules version ' + rules);
   const w = new Uint8Array(N);
-  const g = generate(SEED, w);
+  const villages = R.villageCount ? villageSpots(seed, R.villageCount) : [];
+  const g = generate(SEED, w, villages);
   if (R.goldMap) placeGold(g, seed, R.goldLayout);
   const cx = W >> 1, cz = D >> 1;
   const spots = [];
@@ -421,7 +482,8 @@ function newState(rules = LATEST_RULES, seed = 1) {
   const units = spots.map(([team, x, z], k) => ({ id: k, type: k >= UNIT_SPAWNS.length ? 'builder' : 'soldier', team, x, y: groundY(g, x, z), z, hp: MAX_HP, moved: false, acted: false, dead: false }));
   const buildings = BUILDING_SPOTS.filter(([, , kind]) => kind === 'base' || R.villages !== false)
     .map(([x, z, kind, owner]) => ({ kind, owner, x, y: groundY(g, x, z), z, cp: CAPTURE_PTS, capBy: -1 }));
-  return { rules, seed, lad: R.ladders ? new Set() : undefined, lh: 0, g, units, buildings, gold: [START_GOLD, START_GOLD], built: false, winner: -1, team: 0, turn: 1, moves: 0, events: [], loot: [], nextLoot: 1, inv: [0, 0, 0, 0, 0, 0, 0],
+  return { rules, seed, villages: villages.map(v => ({ x: v.x, y: groundY(g, v.x, v.z), z: v.z, huts: v.huts.map(([dx, dz]) => [v.x + dx, v.z + dz]) })),
+           lad: R.ladders ? new Set() : undefined, lh: 0, g, units, buildings, gold: [START_GOLD, START_GOLD], built: false, winner: -1, team: 0, turn: 1, moves: 0, events: [], loot: [], nextLoot: 1, inv: [0, 0, 0, 0, 0, 0, 0],
            bh: blockHash(g), changed: [], region: null,
            w, wh: waterHash(w), wnext: [], wmark: new Int32Array(N), wgen: 1, dfail: new Int32Array(N),
            jr: null, jg: new Int32Array(N), jw: new Int32Array(N), jstamp: 0, history: [], cursor: 0, wchanged: [], wtick: 0 };
@@ -582,15 +644,34 @@ function dig(s, u, x, y, z) {
 /* ---------- Attacking: an adjacent enemy (one tile, up to one block up or down), once per turn ---------- */
 // Melee: an adjacent tile, at most one block up or down. Archers: 2-3 tiles away, +1 range from 2+ blocks higher.
 const adjacent = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.z - b.z) === 1 && Math.abs(a.y - b.y) <= 1;
+// Line of sight (rules 9): the straight line between the two cells' centres, sampled 4 times per cell crossed in
+// integer steps, must not pass through a block. Integer-only, so every browser agrees.
+function clearLine(s, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+  const n = 4 * Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz), 1);
+  // point k of n: a + (b - a) * k / n, measured in half-cells from the centre: floor((2a + 1) n + 2 d k) / (2n))
+  for (let k = 1; k < n; k++) {
+    const x = Math.floor(((2 * a.x + 1) * n + 2 * dx * k) / (2 * n));
+    const y = Math.floor(((2 * a.y + 1) * n + 2 * dy * k) / (2 * n));
+    const z = Math.floor(((2 * a.z + 1) * n + 2 * dz * k) / (2 * n));
+    if ((x !== a.x || y !== a.y || z !== a.z) && (x !== b.x || y !== b.y || z !== b.z) && solidAt(s, x, y, z)) return false;
+  }
+  return true;
+}
+// How far a ranged unit shoots: 2-3 tiles (2-9 under rules 9), one more from 2+ blocks above the target.
+function shotRange(s, a, b) {
+  const d = Math.abs(a.x - b.x) + Math.abs(a.z - b.z), r = RULES[s.rules || 1];
+  if (d < 2 || d > (r.archerRange || 3) + (a.y - b.y >= 2 ? 1 : 0)) return false;
+  return !r.sight || clearLine(s, a, b);
+}
 function inReach(s, a, b) {
   if (flies(s, a) || flies(s, b)) {                    // flyers: next to each other within 2 up/down, or a flyer right above
-    if (UNIT_TYPES[a.type].ranged) { const d = Math.abs(a.x - b.x) + Math.abs(a.z - b.z); return d >= 2 && d <= 3 + (a.y - b.y >= 2 ? 1 : 0); }
+    if (UNIT_TYPES[a.type].ranged) return shotRange(s, a, b);
     const d = Math.abs(a.x - b.x) + Math.abs(a.z - b.z);
     return (d === 1 && Math.abs(a.y - b.y) <= 2) || (flies(s, a) && d === 0 && b.y < a.y);
   }
   if (!UNIT_TYPES[a.type].ranged) return adjacent(a, b);
-  const d = Math.abs(a.x - b.x) + Math.abs(a.z - b.z);
-  return d >= 2 && d <= 3 + (a.y - b.y >= 2 ? 1 : 0);
+  return shotRange(s, a, b);
 }
 function canAttack(s, a, b) {
   if (a.dead || b.dead || a.team !== s.team || b.team === a.team || a.acted) return false;
@@ -648,6 +729,16 @@ function capture(s, u) {
   s.moves++;
   record(s, { t: 'capture', u: u.id });
   return true;
+}
+// Day and night (rules 9): dayLength rounds of day, then as many of night. Rounds count from 1.
+function nightAt(s, turn = s.turn) {
+  const L = RULES[s.rules || 1].dayLength;
+  return !!L && ((turn - 1) % (2 * L)) >= L;
+}
+// Rounds left in the current day or night, this one included.
+function roundsLeft(s, turn = s.turn) {
+  const L = RULES[s.rules || 1].dayLength;
+  return L ? L - ((turn - 1) % L) : 0;
 }
 const baseOf = (s, team) => s.buildings.find(b => b.kind === 'base' && b.owner === team) || null;
 // Where a new unit appears: the base tile; under rules 7 (no limit per turn), if that's taken, the nearest free
@@ -838,10 +929,10 @@ function neighbours(i) {
      #       #        #
 */
 //                 air grass dirt stone wood bedrock leaves
-//                 air grass dirt stone wood bedrock leaves gold
-const REACH   = [  0,   1,    1,   2,    3,   0,      2,     2 ];
-const FRAGILE = [  0,   1,    1,   0,    1,   0,      1,     0 ];  // fragile crumbles one block at a time and vanishes
-const LOOT    = [  0,   0,    0,   0,    4,   0,      0,     0 ];  // what a crumbled block leaves behind (4 = wood)
+//                 air grass dirt stone wood bedrock leaves gold wall roof
+const REACH   = [  0,   1,    1,   2,    3,   0,      2,     2,    1,   0 ];  // a roof only rests on top of something
+const FRAGILE = [  0,   1,    1,   0,    1,   0,      1,     0,    1,   1 ];  // fragile crumbles one block at a time and vanishes
+const LOOT    = [  0,   0,    0,   0,    4,   0,      0,     0,    0,   0 ];  // what a crumbled block leaves behind (4 = wood)
 const MAX_REACH = 3;
 const UNSUP = 255;
 const sdist = new Uint8Array(N);
@@ -1011,7 +1102,7 @@ function resolve(s) {
 }
 
 const BlockSim = {
-  W, D, H, WD, N, AIR, GRASS, DIRT, STONE, WOOD, BEDROCK, LEAVES, GOLD, WFULL, MAX_HP, CAPTURE_PTS, INCOME, DIG_REACH, MAX_WATER_STEPS,
+  W, D, H, WD, N, AIR, GRASS, DIRT, STONE, WOOD, BEDROCK, LEAVES, GOLD, WALL, ROOF, nightAt, roundsLeft, clearLine, WFULL, MAX_HP, CAPTURE_PTS, INCOME, DIG_REACH, MAX_WATER_STEPS,
   TEAM_NAMES, TEAM_COLORS, TYPES, UNIT_TYPES, DAMAGE, RULES, LATEST_RULES, damageOf,
   idx, inGrid, mix, unitName, cellKey, newState, stateHash,
   solidAt, unitAt, stepTo, stepsFrom, moveOf, moveRange, moveUnit, canDig, digTool, dig, canAttack, attack, hasLadder, climbsLadders,
