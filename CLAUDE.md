@@ -38,7 +38,7 @@
   - Only relevant buttons show (`updateButtons`, every frame): Up/Down (screw), Dig (builders), Attack (enemy in reach), Capture (on a capturable building), Confirm (a move is planned), Redo (something to redo); Build, Undo, End turn always. A flyer's range shows as the layer at its planned height, with a marker on the ground tile below it; keys R/F = up/down.
   - First-game tutorial (first "Play vs bot", once per browser, `bw:tutorialDone`): 6 hints that finish when you do the thing (move, Confirm, select the builder, Dig, End turn, the goal), the button meant pulses; "Skip tutorial". Events `tutorial` {step} / {done|skipped} show where new players stop. Code: `TUT`, `tutTick`.
   - Blood: any health drop sprays droplets; a death adds a ground splat that fades over ~20 s (`bleed`, `tintUnits` watches health).
-  - Aerial Screw sprite: 36×72 px (`SCREW`), generated from a 3D helix; drawn 1.5×3 blocks, hovering 0.35 above its cell.
+  - Aerial Screw sprite: 36×72 px (`SCREW`), generated from a 3D helix; drawn 1.5×3 blocks, hovering 0.35 above its cell. Animated: 8 sail frames (`SCREW_SAIL`, the helix turned 1/8 per frame, ~10 fps) and a 0.1-block bob, out of step per unit; still with reduced motion.
   - Debug (file:// or `?debug`): state hash, Commander free camera, `window.BW_DEBUG` (state, selected unit, `digBelow()`) for tests.
   - The knight is a 28×40 mounted sprite, two cubes tall.
   - Terrain rendering: one mesh per 16×16 chunk made of only the faces bordering open space (full-size cubes, no gaps), textured from a generated atlas (32×32 per material, faint darker border = lines between blocks). Taps find the block from hit point − normal/2. Layer cut-away (Auto + ▲▼) and the "ghost" dither around the selected unit still apply.
