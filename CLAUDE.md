@@ -25,7 +25,8 @@
   - 1: original (villages, 100/turn each, original damage).
   - 2: faster kills: same type vs same type dies in 2 hits from full health (base 6); the triangle's winner (soldier > spearman > knight > soldier) kills outright even when hurt.
   - 3: rules 2 plus the gold economy: no villages; 140 gold blocks per side (10,500 gold) underground in columns 3-7 deep, random per match (seed) but mirrored so both sides dig the same; builders mine them for +75 at once; bases pay 50/turn. Only builders dig. Digging below your feet leaves a ladder in that cell and takes the builder down into the hole. Units (not knights) climb ladders; knights can step up one block. Gold shows in the layer view (▲▼).
-  - 4 (current): rules 3 plus each side starts with a builder (behind its 3 soldiers), and builders cost 500 (`costOf`; per-rules `costs`).
+  - 4: rules 3 plus each side starts with a builder (behind its 3 soldiers), and builders cost 500 (`costOf`; per-rules `costs`).
+  - 5 (current): adds the Aerial Screw (`screw`, 400, move 8): flies with its own height, one block across/up/down per move through open air (can't enter blocks), stays at its height, no dig/capture, drops stones on enemies next to it (±2 up/down) or anywhere straight below. Only archers (8), spearmen (6) and screws (6) can hit it. Damage table in `RULES[5].damage`. New unit types are appended to `TYPES` (the hash uses the index).
 
 ## Current code
 - `sim-core.js`: the deterministic sim (pure, no Three.js/DOM), browser script (`window.BlockSim`) or Node module. Action recording into the undo journal, `turnGroups`, `replayTurn`, `stepsFrom` (moves incl. ladders), `digTool`, ladders (`s.lad` set + `s.lh` hash, journaled via the undo snapshot).
@@ -34,6 +35,9 @@
   - Match: joystick bottom-left (walks inside the blue tiles, settles on a tile when released; on a ladder, stick up/down climbs); buttons in two equal rows of four (Attack, Dig, Capture, Build / Undo, Redo, Confirm, End turn); Units + Next above the joystick; ☰ Menu (Back to lobby, Quit game online / Restart in pass & play). Online, your view stays on your own army.
   - Notifications: the first time you wait for your opponent online, a dialog explains why to allow them ("Yes, notify me" / "Not now", asks again after 3 days; a blocked variant says how to unblock). Websites can't pick the notification sound.
   - Messages (`flash`) also show as a popup at the top while the lobby is open.
+  - Only relevant buttons show (`updateButtons`, every frame): Up/Down (screw), Dig (builders), Attack (enemy in reach), Capture (on a capturable building), Confirm (a move is planned), Redo (something to redo); Build, Undo, End turn always. A flyer's range shows as the layer at its planned height, with a marker on the ground tile below it; keys R/F = up/down.
+  - Blood: any health drop sprays droplets; a death adds a ground splat that fades over ~20 s (`bleed`, `tintUnits` watches health).
+  - Aerial Screw sprite: 36×72 px (`SCREW`), generated from a 3D helix; drawn 1.5×3 blocks, hovering 0.35 above its cell.
   - Debug (file:// or `?debug`): state hash, Commander free camera, `window.BW_DEBUG` (state, selected unit, `digBelow()`) for tests.
   - The knight is a 28×40 mounted sprite, two cubes tall.
   - Terrain rendering: one mesh per 16×16 chunk made of only the faces bordering open space (full-size cubes, no gaps), textured from a generated atlas (32×32 per material, faint darker border = lines between blocks). Taps find the block from hit point − normal/2. Layer cut-away (Auto + ▲▼) and the "ghost" dither around the selected unit still apply.

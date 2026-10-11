@@ -198,6 +198,7 @@ body.waiting #controls .leftpad, body.waiting #controls .cgrid{display:none}
 .cbtn.pressed{transform:translateY(3px);box-shadow:0 0 0 var(--ink)}
 .selrow .cbtn{height:40px}
 .cbtn.confirm{height:auto;font-size:13px}
+.cbtn[hidden]{display:none}
 #acount{display:block;font-size:10px;font-weight:800;color:var(--muted);margin-top:1px}
 #buildPanel{left:auto;right:0}
 .joy{position:relative;width:128px;height:128px;border-radius:50%;border:2px solid var(--ink);background:var(--panel);
@@ -383,6 +384,8 @@ body.waiting #controls .leftpad, body.waiting #controls .cgrid{display:none}
   </div>
   <div class="cgrid">
     <div id="buildPanel" hidden></div>
+    <button class="btn cbtn" data-act="up" aria-label="Fly one block higher" hidden>▲ Up</button>
+    <button class="btn cbtn" data-act="down" aria-label="Fly one block lower" hidden>▼ Down</button>
     <button class="btn cbtn dig" data-act="attack" aria-pressed="false">Attack</button>
     <button class="btn cbtn dig" data-act="dig" aria-pressed="false">Dig</button>
     <button class="btn cbtn" data-act="capture">Capture</button>
@@ -409,7 +412,7 @@ const {
   TEAM_NAMES, TEAM_COLORS, TYPES, UNIT_TYPES,
   idx, inGrid, mix, unitName, cellKey, newState, stateHash,
   stepTo, stepsFrom, moveOf, moveRange, moveUnit, canDig, digTool, dig, canAttack, attack, hasLadder, climbsLadders,
-  canCapture, capture, canBuild, buildUnit, incomeOf, costOf,
+  canCapture, capture, canBuild, buildUnit, incomeOf, costOf, flies, typesFor,
   beginAction, endAction, undo, redo, endTurn, gravityStep, waterStep, turnGroups, replayTurn, runGroup,
 } = BlockSim;
 
@@ -804,15 +807,91 @@ const WEAPON = {
              [12, 5, 'T'], [12, 6, 'T'], [12, 7, 'T'], [12, 8, 'T'], [12, 9, 'T'], [12, 10, 'T']],
   builder:  [[10, 4, 'M'], [11, 4, 'M'], [12, 4, 'M'], [13, 4, 'M'], [14, 4, 'M'], [12, 5, 'W'], [12, 6, 'W'], [12, 7, 'W'], [12, 8, 'W'], [12, 9, 'W'], [12, 10, 'W']],
 };
-const HELMET = { soldier: ['#4b5320', '#6b7a35'], spearman: ['#6b4423', '#8a5a33'], knight: ['#9aa3ad', '#d5dbe1'],
+// The Aerial Screw (rules 5): da Vinci's helical linen sail on a mast, a round platform and a crewman. 36 x 72.
+const SCREW = [
+  ".................ZZUUU..............",
+  ".................ZZUU...............",
+  ".................ZZU................",
+  ".................ZZ.................",
+  ".................ZZ.................",
+  ".................ZZ.................",
+  "................LLL.................",
+  "..............LLLLLYY...............",
+  ".............lLLLLYYk...............",
+  "............lLLYYYZkkkk.............",
+  "............lYYkkZZkkkk.............",
+  "...........YkkkkkZZkkkkY............",
+  "...........kkkkkkZZkkYYl............",
+  "..........kkkkkkkYYYYLLLl...........",
+  "............kkYYYYLLLLLLl...........",
+  "...........YYYLLLLLLLLLLll..........",
+  ".........YYLLLLLLLLLLLLLLl..........",
+  ".........lLLLLLLLLLLLLLLLl..........",
+  "........llLLLLLLLLLLLLLLLll.........",
+  "........llLLLLLLLLLLLLLLLlY.........",
+  "........lLLLLLLLLLLLLLYYYY..........",
+  ".......llLLLLLLLLLYYYYYk............",
+  ".......llLLLLYYYYYZkkkkkkkk.........",
+  ".......llYYYYkkkkZZkkkkkkkkk........",
+  ".......YYkkkkkkkkZZkkkkkkkkY........",
+  "......kkkkkkkkkkkZZkkkkYYYYll.......",
+  ".......kkkkkkkkkkYYYYYYLLLLll.......",
+  ".........kkkYYYYYYLLLLLLLLLll.......",
+  "........YYYYLLLLLLLLLLLLLLLLl.......",
+  ".....YYYLLLLLLLLLLLLLLLLLLLLll......",
+  ".....llLLLLLLLLLLLLLLLLLLLLLll......",
+  ".....llLLLLLLLLLLLLLLLLLLLLLll......",
+  ".....llLLLLLLLLLLLLLLLLLLLLLYY......",
+  "....lllLLLLLLLLLLLLLLLLLYYYYY.......",
+  "....llLLLLLLLLLLLLYYYYYYkk..........",
+  "....llLLLLLLYYYYYYZkkkkkkkkkkk......",
+  "....llYYYYYYkkkkkZZkkkkkkkkkkkk.....",
+  "....YYkkkkkkkkkkkZZkkkkkkkkkkYY.....",
+  "...YkkkkkkkkkkkkkZZkkkkkYYYYYlll....",
+  "....kkkkkkkkkkkkkYYYYYYYLLLLLlll....",
+  ".......kkkkYYYYYYYLLLLLLLLLLLLll....",
+  ".....YYYYYYLLLLLLLLLLLLLLLLLLLll....",
+  "...YYLLLLLLLLLLLLLLLLLLLLLLLLLll....",
+  "..YllLLLLLLLLLLLLLLLLLLLLLLLLLlll...",
+  "..lllLLLLLLLLLLLLLLLLLLLLLLLLLlll...",
+  "..lllLLLLLLLLLLLLLLLLLLLLLLLLLYYY...",
+  "..llLLLLLLLLLLLLLLLLLLLLLYYYYYY.....",
+  "..llLLLLLLLLLLLLLLYYYYYYYYkk........",
+  ".lllLLLLLLYYYYYYYYZkkkkkkkkkkkkk....",
+  "..UUUUUUUUUUUUUUUZZUUUUUUUUUUUUUUU..",
+  "...uuuuuuuuuuuuuuZZuuuuuuuuuuuuuu...",
+  "....ZZ...........ZZ...........ZZ....",
+  "......ZZ.........ZZ.........ZZ......",
+  "........Zhhh.....ZZ.......ZZ........",
+  ".........SES.....ZZ.....ZZ..........",
+  ".........SSS.....ZZ.................",
+  "........UUUUU....ZZ.................",
+  "........UUUUUSSSZZZZZZZZZZZ.........",
+  "........uuuuu....ZZ.ZZZZZZZZZZZZ....",
+  "........PPPPP....ZZ..Z..Z..Z..Z.....",
+  "........PP.PP........Z..Z..Z..Z.....",
+  "...RRRRRRRRRRRRRRRRRRRRRRRRRRRRRR...",
+  "..RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR..",
+  "..rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr..",
+  "...rrrrrrrrrrrrrrrrrrrrrrrrrrrrrr...",
+  ".....BBBBBBBBBBBBBBBBBBBBBBBBBB.....",
+  "......B...B...B...B...B...B...B.....",
+  "......B...B...B...B...B...B...B.....",
+  "....................................",
+  "....................................",
+  "....................................",
+  "...................................."
+];
+const HELMET = { screw: ['#6b4423', '#8a5a33'], soldier: ['#4b5320', '#6b7a35'], spearman: ['#6b4423', '#8a5a33'], knight: ['#9aa3ad', '#d5dbe1'],
                  archer: ['#2f6b3a', '#4f8f5a'], builder: ['#e2b714', '#f5d652'] };
 const SPRITE_PAL = { S: '#f1c27d', s: '#d9a066', E: '#22303b', B: '#6b4423', P: '#3a3f2a', K: '#161616',
-                     M: '#c9ced6', W: '#8a5a33', T: '#e8e1cf', R: '#9a6b43', r: '#6e4a2c', A: '#2b1d14' };
+                     M: '#c9ced6', W: '#8a5a33', T: '#e8e1cf', R: '#9a6b43', r: '#6e4a2c', A: '#2b1d14',
+                     L: '#f2e8cc', l: '#d6c6a0', k: '#a8987a', Z: '#8a5a33', Y: '#6e4a2c' };
 const spriteCache = new Map();
 function unitTexture(type, team) {
   const key = type + team;
   if (spriteCache.has(key)) return spriteCache.get(key);
-  const art = type === 'knight' ? KNIGHT : BODY;
+  const art = type === 'knight' ? KNIGHT : type === 'screw' ? SCREW : BODY;
   const c = document.createElement('canvas');
   c.width = art[0].length; c.height = art.length;
   const ctx = c.getContext('2d');
@@ -832,15 +911,17 @@ const unitGroups = [];
 function makeUnitGroup(u) {
   const g = new THREE.Group();
   const tall = UNIT_TYPES[u.type].tall;
-  const sprite = new THREE.Mesh(new THREE.PlaneGeometry(tall ? 1.4 : 0.74, tall ? 2.0 : 1.1),   // same pixel size: 28 x 40 vs 16 x 24
+  // Sprite size in blocks, and how high its bottom floats (the screw hovers): soldier 16x24 px, knight 28x40, screw 36x72.
+  const [sw, sh, lift] = u.type === 'screw' ? [1.5, 3.0, 0.35] : tall ? [1.4, 2.0, 0] : [0.74, 1.1, 0];
+  const sprite = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh),
     new THREE.MeshBasicMaterial({ map: unitTexture(u.type, u.team), alphaTest: 0.5, side: THREE.DoubleSide }));
-  sprite.position.y = tall ? 1.0 : 0.55;
+  sprite.position.y = lift + sh / 2;
   g.add(sprite);
   g.userData.sprite = sprite;
   // Invisible hit box, bigger than the sprite, used for long-press selection and attack targeting.
-  const hit = new THREE.Mesh(new THREE.BoxGeometry(1, tall ? 2.1 : 1.4, 1),
+  const hit = new THREE.Mesh(new THREE.BoxGeometry(1, lift + sh + 0.2, 1),
     new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false }));
-  hit.position.y = tall ? 1.05 : 0.7;
+  hit.position.y = (lift + sh + 0.2) / 2;
   g.add(hit);
   g.userData.hit = hit;
   // HP bar above the head (turned to the camera together with the sprite).
@@ -849,7 +930,7 @@ function makeUnitGroup(u) {
   const hpFill = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 0.07), new THREE.MeshBasicMaterial({ color: 0x4ade80, side: THREE.DoubleSide }));
   hpFill.position.z = 0.002;
   hpBar.add(hpBg, hpFill);
-  hpBar.position.y = tall ? 2.18 : 1.28;
+  hpBar.position.y = lift + sh + 0.18;
   g.add(hpBar);
   g.userData.hpBar = hpBar; g.userData.hpFill = hpFill;
   g.userData.vis = new THREE.Vector3(u.x + 0.5, u.y, u.z + 0.5);
@@ -918,6 +999,37 @@ function syncLadders() {
   ladderMesh.instanceMatrix.needsUpdate = true;
 }
 
+// The ground tile under the selected flyer: a dark square with an orange outline.
+const flyMark = new THREE.Group();
+{
+  const shade = new THREE.Mesh(new THREE.PlaneGeometry(0.96, 0.96), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }));
+  const edge = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(0.96, 0.96)), new THREE.LineBasicMaterial({ color: 0xff7a1a }));
+  flyMark.add(shade, edge); flyMark.rotation.x = -Math.PI / 2; flyMark.visible = false;
+  scene.add(flyMark);
+}
+function updateFlyMark() {
+  const u = selUnit();
+  flyMark.visible = !!u && flies(S, u) && !u.dead && !lobbyOpen && !commander;
+  if (!flyMark.visible) return;
+  const x = Math.floor(walker.p.x), z = Math.floor(walker.p.z);
+  let y = Math.floor(walker.p.y + 1e-4);
+  while (y > 0 && !(inGrid(x, y - 1, z) && S.g[idx(x, y - 1, z)])) y--;
+  flyMark.position.set(x + 0.5, y + 0.03, z + 0.5);
+}
+// Only the buttons that make sense for the selected unit right now (the rest close up).
+function updateButtons() {
+  const u = selUnit(), own = !!u && !u.dead && u.team === S.team && u.team === viewTeam() && myTurn();
+  const planned = own && !u.moved && pending && (pending[0] !== u.x || pending[1] !== u.y || pending[2] !== u.z);
+  const show = (act, on) => { const b = document.querySelector('[data-act="' + act + '"]'); if (b && b.hidden === !!on) b.hidden = !on; };
+  show('up', own && flies(S, u) && !u.moved);
+  show('down', own && flies(S, u) && !u.moved);
+  show('attack', own && (attackMode || attackTargets().length > 0));
+  show('dig', own && digTool(S, u) !== 'none');
+  show('capture', own && !!captureTarget());
+  show('confirm', planned);
+  show('redo', S.cursor < S.history.length);
+}
+
 const selRing = new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.05, 6, 28), new THREE.MeshBasicMaterial({ color: 0xff7a1a }));
 selRing.rotation.x = Math.PI / 2;
 scene.add(selRing);
@@ -977,13 +1089,14 @@ scene.add(reachBox);
 function showRange() {
   const u = selUnit();
   range = u.moved || falling || S.winner >= 0 || !myTurn() ? new Map() : moveRange(S, u, moveOf(u));
+  const alt = flies(S, u) ? (pending ? pending[1] : u.y) : null;   // a flyer: only the layer it's flying at
   const m = new THREE.Matrix4(), rot = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
   let n = 0;
   rangeKeys = [];
   for (const k of range.keys()) {
     if (n >= 512) break;
     const [x, y, z] = k.split(',').map(Number);
-    if (hiddenCell(x, y, z)) continue;
+    if (hiddenCell(x, y, z) || (alt !== null && y !== alt)) continue;
     rangeKeys.push(k);
     m.makeTranslation(x + 0.5, y + 0.02, z + 0.5).multiply(rot);
     rangeTiles.setMatrixAt(n++, m);
@@ -991,10 +1104,17 @@ function showRange() {
   rangeTiles.count = n;
   rangeTiles.instanceMatrix.needsUpdate = true;
 }
+// Blood: whenever a unit's health drops (your attack, a counter, the bot, an online turn, drowning) it bleeds;
+// a death bursts and leaves a splat. lastHp remembers the health shown last time, per state.
+let lastHp = new Map(), lastHpState = null;
 function tintUnits() {
   syncUnitGroups();
+  if (lastHpState !== S) { lastHp = new Map(); lastHpState = S; clearSplats(); }
   S.units.forEach((u, k) => {
     const g = unitGroups[k];
+    const before = lastHp.get(k);
+    if (before !== undefined && u.hp < before && !lobbyOpen) bleed(u, before - u.hp, u.dead);
+    lastHp.set(k, u.hp);
     g.visible = !u.dead;
     g.userData.sprite.material.color.setHex(u.team === S.team && u.moved ? 0x8a8f96 : 0xffffff);
     const f = u.hp / MAX_HP;
@@ -1047,11 +1167,58 @@ function playEvents() {
   }
   S.events.length = 0;
 }
+const bloodGeo = new THREE.BoxGeometry(0.09, 0.09, 0.09);
+const BLOOD = [0xb3121f, 0x8e0d18, 0xd42a2a];
+function bleed(u, damage, died) {
+  const x = u.x + 0.5, z = u.z + 0.5, y = u.y + (u.type === 'screw' ? 1.6 : u.type === 'knight' ? 1.0 : 0.6);
+  const n = (reduceMotion ? 4 : 10) + Math.min(10, damage * 2) + (died ? (reduceMotion ? 6 : 18) : 0);
+  for (let k = 0; k < n; k++) {
+    const m = new THREE.Mesh(bloodGeo, new THREE.MeshBasicMaterial({ color: BLOOD[k % 3], transparent: true }));
+    m.position.set(x + (Math.random() - 0.5) * 0.3, y + Math.random() * 0.3, z + (Math.random() - 0.5) * 0.3);
+    const a = Math.random() * Math.PI * 2, sp = 1.2 + Math.random() * (died ? 2.6 : 1.6);
+    scene.add(m);
+    fx.push({ kind: 'blood', m, vx: Math.cos(a) * sp, vy: 1.5 + Math.random() * 2.5, vz: Math.sin(a) * sp, floor: u.y + 0.05, t: 0, life: 0.9 + Math.random() * 0.5 });
+  }
+  if (died) addSplat(x, u.y + 0.02, z);
+}
+// A red splat on the ground where a unit died; it fades out over ~20 s.
+const splats = [];
+const splatTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 16;
+  const x = c.getContext('2d');
+  for (let i = 0; i < 16; i++) for (let j = 0; j < 16; j++) {
+    const d = Math.hypot(i - 7.5, j - 7.5) + ((i * 7 + j * 13) % 5) * 0.6;
+    if (d < 6.5) { x.fillStyle = (i + j) % 4 ? '#9e1220' : '#7a0c16'; x.fillRect(i, j, 1, 1); }
+  }
+  const t = new THREE.CanvasTexture(c); t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
+  return t;
+})();
+function addSplat(x, y, z) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.1), new THREE.MeshBasicMaterial({ map: splatTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 }));
+  m.rotation.x = -Math.PI / 2; m.rotation.z = Math.random() * Math.PI;
+  m.position.set(x, y, z);
+  scene.add(m);
+  splats.push({ m, t: 0 });
+}
+function clearSplats() { for (const s of splats) { scene.remove(s.m); s.m.material.dispose(); } splats.length = 0; }
 function updateFx(dt) {
+  for (let n = splats.length - 1; n >= 0; n--) {
+    const sp = splats[n];
+    sp.t += dt;
+    sp.m.material.opacity = Math.max(0, 1 - Math.max(0, sp.t - 14) / 6);
+    if (sp.t > 20) { scene.remove(sp.m); sp.m.material.dispose(); splats.splice(n, 1); }
+  }
   for (let n = fx.length - 1; n >= 0; n--) {
     const f = fx[n];
     let done = false;
-    if (f.kind === 'fall') {
+    if (f.kind === 'blood') {
+      f.t += dt;
+      f.vy -= 14 * dt;
+      f.m.position.x += f.vx * dt; f.m.position.y += f.vy * dt; f.m.position.z += f.vz * dt;
+      if (f.m.position.y < f.floor) { f.m.position.y = f.floor; f.vx *= 0.3; f.vz *= 0.3; f.vy = 0; }
+      f.m.material.opacity = Math.max(0, 1 - f.t / f.life);
+      done = f.t >= f.life;
+    } else if (f.kind === 'fall') {
       f.vy -= 22 * dt;
       f.m.position.y += f.vy * dt;
       f.m.rotation.z += f.spin * dt;
@@ -1155,7 +1322,7 @@ function joyTry(nx, nz) {
   const cx = Math.floor(nx), cz = Math.floor(nz);
   if (cx === ox && cz === oz) { p.x = nx; p.z = nz; return; }
   if (Math.abs(cx - ox) + Math.abs(cz - oz) !== 1) return;
-  const ny = stepTo(S, u, ox, oy, oz, cx - ox, cz - oz);
+  const ny = flies(S, u) ? oy : stepTo(S, u, ox, oy, oz, cx - ox, cz - oz);
   if (ny < 0 || !range.has(cellKey(cx, ny, cz))) return;
   pending = [cx, ny, cz];
   p.x = nx; p.z = nz;
@@ -1169,7 +1336,7 @@ function joyStep(dt) {
   const push = Math.min(1, Math.hypot(joy.x, joy.y));
   const fx = -Math.sin(yaw), fz = -Math.cos(yaw);    // "up" on the stick = away from the camera
   const u = selUnit(), [cx, cy, cz] = pending;
-  if (climbsLadders(u) && hasLadder(S, cx, cy, cz) && Math.abs(joy.y) > Math.abs(joy.x)) {
+  if (!flies(S, u) && climbsLadders(u) && hasLadder(S, cx, cy, cz) && Math.abs(joy.y) > Math.abs(joy.x)) {
     // On a ladder the stick's up/down climbs. At the top, up steps out onto the ground on the side you face.
     let target = null;
     if (joy.y > 0) {
@@ -1435,7 +1602,7 @@ function selectUnit(k) {
 function renderBuildPanel() {
   const panel = $('buildPanel');
   panel.innerHTML = '';
-  for (const type of TYPES) {
+  for (const type of typesFor(S)) {
     const t = UNIT_TYPES[type], b = document.createElement('button');
     b.className = 'btn urow';
     b.disabled = !canBuild(S, type) || !myTurn();
@@ -1580,7 +1747,7 @@ function ballBlocked(x, y, z, r) {
 }
 
 /* ---------- Actions ---------- */
-const PLAY_ACTS = new Set(['confirm', 'capture', 'undo', 'redo', 'endturn', 'dig', 'attack']);
+const PLAY_ACTS = new Set(['confirm', 'capture', 'undo', 'redo', 'endturn', 'dig', 'attack', 'up', 'down']);
 function act(a) {
   const u = selUnit();
   if (PLAY_ACTS.has(a) && !myTurn()) { flash(NET.sending ? 'Sending your turn…' : 'Not your turn'); refreshHud(); return; }
@@ -1647,6 +1814,12 @@ function act(a) {
     const b = document.querySelector('[data-act="view"]');
     b.textContent = fps ? '3rd person' : '1st person';
     b.setAttribute('aria-pressed', String(fps));
+  } else if (a === 'up' || a === 'down') {         // the Aerial Screw changes its planned height (1 move per block)
+    if (!flies(S, u) || u.moved || falling) return;
+    if (walker.path.length > 1) { pending = walker.path[walker.seg].cell.slice(); walker.path = []; }
+    const t = [pending[0], pending[1] + (a === 'up' ? 1 : -1), pending[2]];
+    if (range.has(cellKey(...t))) { pending = t; showRange(); }
+    else flash(a === 'up' ? "Can't fly higher here" : "Can't fly lower here");
   } else if (a === 'dig') {
     setMode(digMode ? null : 'dig');
   } else if (a === 'attack') {
@@ -1684,7 +1857,7 @@ function turnStarted(quiet) {
    at your base. Anyone capturing the bot's base is attacked first, by every fighter that can reach it. */
 let botGame = false, botBusy = false;
 const BOT = 1, WAVE_EVERY = 3, WAVE_K = 10, BOT_STEP_MS = 220;
-const FIGHT_CYCLE = ['soldier', 'spearman', 'archer', 'soldier', 'knight', 'spearman'];
+const FIGHT_CYCLE = ['soldier', 'spearman', 'archer', 'soldier', 'knight', 'spearman', 'screw'];
 const bot = { wave: new Set(), targets: new Map(), turns: 0, built: 0 };
 function botReset() { bot.wave = new Set(); bot.targets = new Map(); bot.turns = 0; bot.built = 0; }
 const at = (x, y, z) => ({ x, y, z });
@@ -2073,7 +2246,7 @@ function applyMatch(m, initial) {
   if (got) {
     hiddenLoot.clear();
     syncUnitGroups();
-    if (initial) { S.events.length = 0; rebuildAll(); } else { playEvents(); rebuildChanged(); }
+    if (initial) { S.events.length = 0; rebuildAll(); lastHpState = null; } else { playEvents(); rebuildChanged(); }   // no blood for old history
     turnStarted(initial);
     if (!initial && S.team === NET.team && navigator.vibrate) navigator.vibrate([30, 60, 30]);
   }
@@ -2305,6 +2478,8 @@ window.addEventListener('keydown', e => {
   if (k === 'g') { act('dig'); return; }
   if (k === 'v') { act('view'); return; }
   if (k === 'n') { act('next'); return; }
+  if (k === 'r') { act('up'); return; }
+  if (k === 'f') { act('down'); return; }
   if (k === 'x') { act('attack'); return; }
   if (k === ']') { act('layerUp'); return; }
   if (k === '[') { act('layerDown'); return; }
@@ -2559,6 +2734,8 @@ function frame(now) {
     g.userData.sprite.visible = !(fps && !commander && k === sel) && !hiddenCell(cx, cy, cz) && !inDark(g.position);
   });
   selRing.visible = !fps && !commander;
+  updateFlyMark();
+  updateButtons();
   if (lobbyOpen) rangeTiles.visible = destTile.visible = selRing.visible = false;   // a clean backdrop behind the lobby
   const targets = attackMode ? attackTargets() : [];
   unitGroups.forEach((g, k) => {

@@ -150,13 +150,14 @@ const TEAM_COLORS = [0x3b82c4, 0xe0453a];
 const MAX_HP = 10;
 
 /* ---------- Unit types: one table, so they're easy to tune (and later, to mod) ---------- */
-const TYPES = ['soldier', 'spearman', 'knight', 'archer', 'builder'];
+const TYPES = ['soldier', 'spearman', 'knight', 'archer', 'builder', 'screw'];   // new types go at the end (the hash uses the index)
 const UNIT_TYPES = {
   soldier:  { label: 'Soldier',  move: 6, cost: 100, dig: 'soft', capture: true },
   spearman: { label: 'Spearman', move: 6, cost: 150, dig: 'soft', capture: true },
   knight:   { label: 'Knight',   move: 10, cost: 300, dig: 'none', capture: false, noClimb: true, tall: true },
   archer:   { label: 'Archer',   move: 6, cost: 200, dig: 'soft', capture: true, ranged: true },
   builder:  { label: 'Builder',  move: 6, cost: 150, dig: 'hard', capture: true },
+  screw:    { label: 'Aerial Screw', move: 8, cost: 400, dig: 'none', capture: false, flies: true },   // rules 5+
 };
 // Base damage (out of 10 HP) by attacker row and defender column, before scaling by the attacker's health.
 // Soldier beats spearman, spearman beats knight, knight beats soldier.
@@ -193,7 +194,27 @@ const RULES = {
 RULES[3] = { ...RULES[2], villages: false, income: 50, goldValue: 75, goldMap: true, builderDigs: true, ladders: true, knightSteps: true };
 //  4: each side also starts with a builder, and builders cost 500.
 RULES[4] = { ...RULES[3], startBuilder: true, costs: { builder: 500 } };
-const LATEST_RULES = 4;
+//  5: the Aerial Screw, a flying unit with its own height: each move step goes one block across, up or down (1 move
+//     each) through open air; it can't enter blocks, so it flies over (or under) terrain. It stays at its height.
+//     Can't dig or capture. Drops stones on an enemy next to it (within 2 up/down) or anywhere straight below it.
+//     Only archers (strongly), spearmen (reach 2 up) and other screws can hit it.
+RULES[5] = {
+  ...RULES[4], flyer: true,
+  damage: {
+    //          soldier spearman knight archer builder screw
+    soldier:  { soldier: 6, spearman: 10, knight: 3, archer: 6, builder: 7, screw: 0 },
+    spearman: { soldier: 3, spearman: 6, knight: 10, archer: 6, builder: 7, screw: 6 },
+    knight:   { soldier: 10, spearman: 3, knight: 6, archer: 8, builder: 8, screw: 0 },
+    archer:   { soldier: 4, spearman: 4, knight: 3, archer: 6, builder: 6, screw: 8 },
+    builder:  { soldier: 2, spearman: 2, knight: 1, archer: 2, builder: 6, screw: 0 },
+    screw:    { soldier: 5, spearman: 4, knight: 4, archer: 4, builder: 6, screw: 6 },
+  },
+};
+const LATEST_RULES = 5;
+// Flying (rules 5+): which units fly, which can hit a flyer, and how high a flyer hovers over a column.
+const flies = (s, u) => !!UNIT_TYPES[u.type].flies && !!RULES[s.rules || 1].flyer;
+const hitsFlyers = type => type === 'archer' || type === 'spearman' || type === 'screw';
+const typesFor = s => TYPES.filter(t => !UNIT_TYPES[t].flies || RULES[s.rules || 1].flyer);
 // What a unit costs under these rules.
 const costOf = (s, type) => ((RULES[s.rules || 1].costs || {})[type]) ?? UNIT_TYPES[type].cost;
 //                air grass dirt stone wood bedrock leaves gold
@@ -410,13 +431,20 @@ function placeUnit(s, u, x, y, z) {
   return true;
 }
 // Units are pushed up out of blocks and fall when nothing is under them (a unit below counts as ground).
+// A flyer hovers in the first open cell above a column's top block and any water on it.
+function flyY(s, x, z) {
+  let y = H;
+  while (y > 1 && !s.g[idx(x, y - 1, z)]) y--;
+  while (y < H && s.w[idx(x, y, z)]) y++;
+  return y;
+}
 function settleUnits(s) {
   for (const u of s.units) if (!u.dead) while (u.y < H + 3 && solidAt(s, u.x, u.y, u.z)) u.y++;
   let moved = true;
   while (moved) {
     moved = false;
     for (const u of s.units) {
-      if (u.dead) continue;
+      if (u.dead || flies(s, u)) continue;
       if (u.y > 1 && !solidAt(s, u.x, u.y - 1, u.z) && !unitAt(s, u.x, u.y - 1, u.z, u) && !onLadder(s, u)) { u.y--; moved = true; }
     }
   }
@@ -451,6 +479,11 @@ const moveOf = u => UNIT_TYPES[u.type].move;
 // Every cell one move away: the four neighbouring columns, plus up and down a ladder.
 function stepsFrom(s, u, x, y, z) {
   const out = [];
+  if (flies(s, u)) {                                  // fly one block across, up or down, through open air
+    for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1], [0, 1, 0], [0, -1, 0]])
+      if (freeCell(s, x + dx, y + dy, z + dz, u)) out.push([x + dx, y + dy, z + dz]);
+    return out;
+  }
   for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
     const ny = stepTo(s, u, x, y, z, dx, dz);
     if (ny >= 0) out.push([x + dx, ny, z + dz]);
@@ -513,14 +546,20 @@ function dig(s, u, x, y, z) {
 /* ---------- Attacking: an adjacent enemy (one tile, up to one block up or down), once per turn ---------- */
 // Melee: an adjacent tile, at most one block up or down. Archers: 2-3 tiles away, +1 range from 2+ blocks higher.
 const adjacent = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.z - b.z) === 1 && Math.abs(a.y - b.y) <= 1;
-function inReach(a, b) {
+function inReach(s, a, b) {
+  if (flies(s, a) || flies(s, b)) {                    // flyers: next to each other within 2 up/down, or a flyer right above
+    if (UNIT_TYPES[a.type].ranged) { const d = Math.abs(a.x - b.x) + Math.abs(a.z - b.z); return d >= 2 && d <= 3 + (a.y - b.y >= 2 ? 1 : 0); }
+    const d = Math.abs(a.x - b.x) + Math.abs(a.z - b.z);
+    return (d === 1 && Math.abs(a.y - b.y) <= 2) || (flies(s, a) && d === 0 && b.y < a.y);
+  }
   if (!UNIT_TYPES[a.type].ranged) return adjacent(a, b);
   const d = Math.abs(a.x - b.x) + Math.abs(a.z - b.z);
   return d >= 2 && d <= 3 + (a.y - b.y >= 2 ? 1 : 0);
 }
 function canAttack(s, a, b) {
   if (a.dead || b.dead || a.team !== s.team || b.team === a.team || a.acted) return false;
-  return inReach(a, b);
+  if (flies(s, b) && !hitsFlyers(a.type)) return false;
+  return inReach(s, a, b);
 }
 // Damage scales with the attacker's health (a hurt unit hits softer), rounded, at least 1.
 // Under rules 2 the triangle's winner kills outright.
@@ -537,7 +576,8 @@ function attack(s, a, b) {
   if (!canAttack(s, a, b)) return false;
   hurt(s, b, damageOf(s, a, b));
   // Survivors strike back if they fight up close and the attacker is next to them (archers never do).
-  if (!b.dead && !UNIT_TYPES[b.type].ranged && adjacent(a, b)) hurt(s, a, damageOf(s, b, a));
+  if (!b.dead && !UNIT_TYPES[b.type].ranged && (flies(s, a) || flies(s, b) ? !(flies(s, a) && !hitsFlyers(b.type)) && inReach(s, b, a) : adjacent(a, b)))
+    hurt(s, a, damageOf(s, b, a));
   a.acted = true; a.moved = true;              // attacking finishes the unit's turn
   s.moves++;
   record(s, { t: 'attack', u: a.id, v: b.id });
@@ -577,6 +617,7 @@ const baseOf = (s, team) => s.buildings.find(b => b.kind === 'base' && b.owner =
 function canBuild(s, type) {
   const b = baseOf(s, s.team), t = UNIT_TYPES[type];
   if (s.winner >= 0 || !b || !t || s.built || s.gold[s.team] < costOf(s, type)) return false;
+  if (t.flies && !RULES[s.rules || 1].flyer) return false;
   return !unitAt(s, b.x, b.y, b.z) && !solidAt(s, b.x, b.y, b.z);
 }
 function buildUnit(s, type) {
@@ -710,7 +751,7 @@ function endTurn(s) {
   // Soldiers starting their turn in deep water take damage.
   s.drowned = [];
   for (const u of s.units) {
-    if (u.dead || u.team !== s.team || !inGrid(u.x, u.y, u.z) || s.w[idx(u.x, u.y, u.z)] < DROWN_LEVEL) continue;
+    if (u.dead || u.team !== s.team || flies(s, u) || !inGrid(u.x, u.y, u.z) || s.w[idx(u.x, u.y, u.z)] < DROWN_LEVEL) continue;
     hurt(s, u, DROWN_DMG);
     s.drowned.push(u.id);
   }
@@ -916,7 +957,7 @@ const BlockSim = {
   TEAM_NAMES, TEAM_COLORS, TYPES, UNIT_TYPES, DAMAGE, RULES, LATEST_RULES, damageOf,
   idx, inGrid, mix, unitName, cellKey, newState, stateHash,
   solidAt, unitAt, stepTo, stepsFrom, moveOf, moveRange, moveUnit, canDig, digTool, dig, canAttack, attack, hasLadder, climbsLadders,
-  canCapture, capture, canBuild, buildUnit, incomeOf, costOf,
+  canCapture, capture, canBuild, buildUnit, incomeOf, costOf, flies, flyY, typesFor,
   beginAction, endAction, undo, redo, endTurn, gravityStep, waterStep, resolve,
   turnGroups, runGroup, replayTurn, finishTurn, MAX_GROUPS,
 };
