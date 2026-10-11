@@ -1821,7 +1821,9 @@ const winnerNow = () => S.winner >= 0 ? S.winner : NET.winner;
 const myTurn = () => !NET.id ? !(botGame && (S.team === BOT || botBusy)) : (S.team === NET.team && !NET.sending && !NET.done);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const onWeb = location.protocol.startsWith('http');                    // opened as a file: hot-seat only
-const HOME = location.pathname.replace(/[^/]*$/, '');                     // '/' live, '/preview/' for a preview copy
+// This page's own address, file name included: '/' live, '/preview/' for a preview copy, '/html/123/index.html' on
+// itch.io (its file host has no "folder → index.html", so dropping the file name gave a 404 there).
+const HOME = location.pathname;
 const DEBUG = !onWeb || new URLSearchParams(location.search).has('debug');   // dev tools: state hash, Commander camera
 // Where the server and the shareable site are. The itch.io build sets window.CUBE_WARS to point at cubewars.io;
 // there the game runs embedded in itch's page, so no service worker / notifications.
