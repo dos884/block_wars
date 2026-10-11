@@ -155,8 +155,8 @@ body.lobby #hud, body.lobby #controls, body.lobby #layers{display:none}
   border:none;border-bottom:2px dashed var(--muted);padding:4px 2px;border-radius:0}
 #lName:focus{outline:none;border-bottom-color:var(--cmd)}
 .lbig{height:64px;font-size:20px;background:var(--cmd);color:#22303b}
-.lrow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.lrow .btn{height:64px;font-size:17px}
+.lrow{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.lrow .btn{height:64px;font-size:16px;line-height:1.15;padding:0 4px}
 #lFriend{background:var(--cmd);color:#22303b}
 #lQuick[hidden]{display:none}
 .kofi{display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;font-weight:800}
@@ -292,6 +292,7 @@ body.waiting #controls .leftpad, body.waiting #controls .cgrid{display:none}
       </div>
       <div class="lrow">
         <button class="btn" id="lFriend">Play a friend</button>
+        <button class="btn" id="lBot">Play vs bot</button>
         <button class="btn" id="lLocal">Play yourself</button>
       </div>
     </div>
@@ -411,7 +412,7 @@ const {
   idx, inGrid, mix, unitName, cellKey, newState, stateHash,
   stepTo, stepsFrom, moveOf, moveRange, moveUnit, canDig, digTool, dig, canAttack, attack, hasLadder, climbsLadders,
   canCapture, capture, canBuild, buildUnit, incomeOf,
-  beginAction, endAction, undo, redo, endTurn, gravityStep, waterStep, turnGroups, replayTurn,
+  beginAction, endAction, undo, redo, endTurn, gravityStep, waterStep, turnGroups, replayTurn, runGroup,
 } = BlockSim;
 
 /* =========================================================
@@ -1476,6 +1477,7 @@ function refreshHud() {
   const u = selUnit();
   $('udot').style.background = hex(TEAM_COLORS[u.team]);
   $('ustate').textContent = attackMode ? 'Attack mode · tap a red-ringed enemy' : digMode ? 'Dig mode · tap a block'
+    : botGame && !myTurn() ? 'The bot is moving…'
     : NET.id && !myTurn() ? (winnerNow() >= 0 ? 'Game over' : NET.sending ? 'Sending your turn…' : 'Waiting for ' + oppName())
     : u.acted ? 'Done this turn' : u.moved ? 'Moved · can still attack' : 'Ready · tap a blue tile';
   $('pos').textContent = `x${u.x} y${u.y} z${u.z}`;
@@ -1511,10 +1513,12 @@ function refreshHud() {
     $('winUndo').hidden = true; $('winAgain').textContent = 'Main menu';
   }
   if (won >= 0 && NET.desync < 0) {
-    $('winText').textContent = NET.id && NET.team >= 0 ? (won === NET.team ? 'You win!' : 'You lose') : TEAM_NAMES[won] + ' wins!';
+    $('winText').textContent = NET.id && NET.team >= 0 ? (won === NET.team ? 'You win!' : 'You lose')
+      : botGame ? (won === BOT ? 'The bot wins!' : 'You win!') : TEAM_NAMES[won] + ' wins!';
     $('winSub').textContent = NET.quit < 0 ? 'The enemy base has been captured.'
       : NET.quit === NET.team ? 'You quit the game.' : (NET.names[NET.quit] || TEAM_NAMES[NET.quit]) + ' quit the game.';
   }
+  if (botGame) $('winUndo').hidden = won === BOT;   // you can't undo the bot's winning move
   if (NET.id) {                                  // online: a win still has to be sent; after that, no undo
     const unsent = !NET.done && S.winner === NET.team;
     $('winUndo').hidden = !unsent;
@@ -1653,16 +1657,17 @@ function act(a) {
   } else if (a === 'endturn') {
     if (falling) return;                     // wait for the current action to finish resolving
     if (NET.id) { submitTurn(); return; }    // online: the server checks the turn first
-    track('hotseat_turn', { turn: S.turn, team: S.team });
+    track('hotseat_turn', botGame ? { turn: S.turn, team: S.team, bot: true } : { turn: S.turn, team: S.team });
     endTurn(S);
     turnStarted();
     if (S.wnext.length) settle();            // the same steps as the sim's finishTurn(), animated
+    if (botGame && S.team === BOT) runBotSoon();
   }
   refreshHud();
 }
 // After End turn (yours or the opponent's): select the side to move and say what happened.
 // Whose units the screen follows: online, always your own; in pass & play, whoever is to move.
-const viewTeam = () => NET.id && NET.team >= 0 ? NET.team : S.team;
+const viewTeam = () => NET.id && NET.team >= 0 ? NET.team : botGame ? 0 : S.team;
 const oppName = () => NET.id && NET.team >= 0 ? NET.names[1 - NET.team] || TEAM_NAMES[1 - NET.team] : TEAM_NAMES[S.team];
 function turnStarted(quiet) {
   setMode(null);
@@ -1673,9 +1678,139 @@ function turnStarted(quiet) {
     if (first >= 0 && first !== sel) selectUnit(first); else { resetWalker(); showRange(); }
   }
   const hurt = (S.drowned || []).map(id => unitName(S.units[id]) + (S.units[id].dead ? ' drowned' : ' is drowning'));
-  if (!quiet) flash(hurt.length ? hurt.join(', ') : !NET.id ? TEAM_NAMES[S.team] + "'s turn"
-    : S.team === NET.team ? 'Your turn' : 'Waiting for ' + oppName());
+  if (!quiet) flash(hurt.length ? hurt.join(', ') : botGame ? (S.team === BOT ? 'The bot is moving…' : 'Your turn')
+    : !NET.id ? TEAM_NAMES[S.team] + "'s turn" : S.team === NET.team ? 'Your turn' : 'Waiting for ' + oppName());
 }
+/* ---------- Bot ("Play vs bot"): Red. Builders mine the gold, fighters defend home and attack in waves ----------
+   Waves grow with the square root of the bot's army: every few turns it sends fighters worth ~10 × sqrt(army cost)
+   at your base. Anyone capturing the bot's base is attacked first, by every fighter that can reach it. */
+let botGame = false, botBusy = false;
+const BOT = 1, WAVE_EVERY = 3, WAVE_K = 10, BOT_STEP_MS = 220;
+const FIGHT_CYCLE = ['soldier', 'spearman', 'archer', 'soldier', 'knight', 'spearman'];
+const bot = { wave: new Set(), targets: new Map(), turns: 0, built: 0 };
+function botReset() { bot.wave = new Set(); bot.targets = new Map(); bot.turns = 0; bot.built = 0; }
+const at = (x, y, z) => ({ x, y, z });
+const md = (a, x, z) => Math.abs(a.x - x) + Math.abs(a.z - z);
+const cellsOf = u => [...moveRange(S, u, moveOf(u)).keys()].map(k => k.split(',').map(Number));
+const ourBase = () => S.buildings.find(b => b.kind === 'base' && b.owner === BOT);
+const theirBase = () => S.buildings.find(b => b.kind === 'base' && b.owner !== BOT);
+const enemies = () => S.units.filter(v => !v.dead && v.team !== BOT);
+// The reachable cell closest to (gx, gz), never the bot's own base tile (that would block building there).
+function botCellToward(u, gx, gz) {
+  const base = ourBase();
+  let best = null, bd = md(u, gx, gz);
+  for (const [x, y, z] of cellsOf(u)) {
+    if (base && x === base.x && z === base.z) continue;
+    const d = Math.abs(x - gx) + Math.abs(z - gz);
+    if (d < bd) { bd = d; best = [x, y, z]; }
+  }
+  return best;
+}
+// Where this unit can stand to hit t this turn (as close as possible to where it is), or null.
+function botAttackFrom(u, t) {
+  if (canAttack(S, u, t)) return [u.x, u.y, u.z];
+  if (u.moved) return null;
+  let best = null, bd = Infinity;
+  for (const [x, y, z] of cellsOf(u)) {
+    if (!canAttack(S, { ...u, ...at(x, y, z) }, t)) continue;
+    const d = Math.abs(x - u.x) + Math.abs(z - u.z);
+    if (d < bd) { bd = d; best = [x, y, z]; }
+  }
+  return best;
+}
+// One bot action group, run like a player's (a dig's collapse and flood happen inside), then shown.
+async function botStep(acts) {
+  if (!acts.length) return false;
+  const ok = runGroup(S, acts);
+  hiddenLoot.clear(); syncUnitGroups(); playEvents(); rebuildChanged(); refreshHud();
+  await sleep(BOT_STEP_MS);
+  return ok;
+}
+const moveAct = (u, c) => (c && (c[0] !== u.x || c[1] !== u.y || c[2] !== u.z)) ? [{ t: 'move', u: u.id, x: c[0], y: c[1], z: c[2] }] : [];
+const goldIn = (x, z, below = H) => { for (let y = 1; y < below; y++) if (S.g[idx(x, y, z)] === GOLD) return true; return false; };
+async function botBuilder(u) {
+  let t = bot.targets.get(u.id);
+  if (!t || !goldIn(t[0], t[1])) {                     // the nearest gold column on our half that no other builder took
+    const taken = new Set([...bot.targets].filter(([id]) => id !== u.id).map(([, c]) => c.join()));
+    let bd = Infinity; t = null;
+    for (let z = 0; z < D; z++) for (let x = W >> 1; x < W; x++) {
+      if (taken.has(x + ',' + z) || !goldIn(x, z)) continue;
+      const d = md(u, x, z);
+      if (d < bd) { bd = d; t = [x, z]; }
+    }
+    if (t) bot.targets.set(u.id, t); else bot.targets.delete(u.id);
+  }
+  if (!t) return;
+  if (u.x !== t[0] || u.z !== t[1]) await botStep(moveAct(u, botCellToward(u, t[0], t[1])));
+  for (let n = 0; n < 3; n++) {                        // standing on it: dig straight down (ladders, mining the gold)
+    const b = S.units[u.id];
+    if (b.x !== t[0] || b.z !== t[1] || !goldIn(b.x, b.z, b.y) || !canDig(S, b, b.x, b.y - 1, b.z)) break;
+    await botStep([{ t: 'dig', u: b.id, x: b.x, y: b.y - 1, z: b.z }]);
+  }
+}
+async function botFighter(u, threat) {
+  const base = ourBase(), goal = theirBase();
+  // 1. Whoever is capturing our base, if we can reach them; 2. any enemy we can hit (weakest first).
+  let target = threat && botAttackFrom(u, threat) ? threat : null;
+  if (!target) target = enemies().filter(e => botAttackFrom(u, e)).sort((a, b) => a.hp - b.hp)[0] || null;
+  if (target) {
+    const from = botAttackFrom(u, target);
+    await botStep([...moveAct(u, from), { t: 'attack', u: u.id, v: target.id }]);
+    return;
+  }
+  if (bot.wave.has(u.id) && goal) {                   // wave: march on their base and capture it
+    const acts = (u.x === goal.x && u.z === goal.z) ? [] : moveAct(u, botCellToward(u, goal.x, goal.z));
+    const there = acts.length ? { ...u, x: acts[0].x, y: acts[0].y, z: acts[0].z } : u;
+    if (canCapture(S, { ...there, moved: false })) acts.push({ t: 'capture', u: u.id });
+    if (acts.length) await botStep(acts);
+    return;
+  }
+  // Home guard: go for a threat or an enemy near our base, otherwise hold a spot in front of it.
+  const near = threat || enemies().filter(e => base && md(e, base.x, base.z) <= 10).sort((a, b) => md(a, base.x, base.z) - md(b, base.x, base.z))[0];
+  const [gx, gz] = near ? [near.x, near.z] : base ? [base.x - 3, base.z + ((u.id % 5) - 2) * 2] : [u.x, u.z];
+  if (md(u, gx, gz) > 0) await botStep(moveAct(u, botCellToward(u, gx, gz)));
+}
+async function botTurn() {
+  botBusy = true; refreshHud();
+  bot.turns++;
+  const mine = () => S.units.filter(v => !v.dead && v.team === BOT);
+  for (const u of mine().filter(v => v.type === 'builder')) { if (S.winner >= 0) break; await botBuilder(u); }
+  // A new wave every few turns: the home fighters closest to your base, worth ~10 × sqrt(army cost).
+  const fighters = () => mine().filter(v => v.type !== 'builder');
+  if (bot.turns % WAVE_EVERY === 0 && theirBase()) {
+    const power = fighters().reduce((n, v) => n + UNIT_TYPES[v.type].cost, 0), goal = theirBase();
+    let budget = WAVE_K * Math.sqrt(power);
+    for (const v of fighters().filter(v => !bot.wave.has(v.id)).sort((a, b) => md(a, goal.x, goal.z) - md(b, goal.x, goal.z))) {
+      if (budget <= 0) break;
+      bot.wave.add(v.id); budget -= UNIT_TYPES[v.type].cost;
+    }
+  }
+  for (const u of fighters()) {
+    if (S.winner >= 0) break;
+    const base = ourBase(), cap = base && base.capBy >= 0 ? S.units[base.capBy] : null;
+    const threat = cap && !cap.dead && cap.team !== BOT ? cap : null;
+    if (!S.units[u.id].dead && !S.units[u.id].moved) await botFighter(S.units[u.id], threat);
+  }
+  // Build: up to 2 builders while there's gold to mine, otherwise fighters in a fixed mix.
+  if (S.winner < 0) {
+    const builders = mine().filter(v => v.type === 'builder').length;
+    const want = builders < 2 && bot.targets.size + 1 > builders ? 'builder' : FIGHT_CYCLE[bot.built % FIGHT_CYCLE.length];
+    const pick = canBuild(S, want) ? want : canBuild(S, 'soldier') ? 'soldier' : null;
+    if (pick) { await botStep([{ t: 'build', type: pick }]); if (pick !== 'builder') bot.built++; }
+  }
+  botBusy = false;
+  if (S.winner >= 0) { refreshHud(); return; }
+  endTurn(S);
+  turnStarted();
+  if (S.wnext.length) settle();
+  refreshHud();
+}
+// Start the bot's turn once any collapse or flood from your last action has finished.
+function runBotSoon() {
+  const go = () => { if (falling) return setTimeout(go, 150); botTurn().catch(e => { botBusy = false; console.error(e); refreshHud(); }); };
+  setTimeout(go, 400);
+}
+
 /* ---------- Online: a match on the server. Your actions stay local (undo works) until End turn sends them;
    the server replays them with the same sim-core.js and passes them on. The opponent's turns arrive the same way. ---------- */
 const GAME_NAME = 'Cube Wars';
@@ -1683,7 +1818,7 @@ const NET = { id: null, team: -1, legacy: null, count: 0, rev: -1, players: [tru
               winner: -1, quit: -1, desync: -1 };    // winner/quit from the server: a match can also end by someone quitting;
                                                      // desync: the first turn that didn't replay the same here or there
 const winnerNow = () => S.winner >= 0 ? S.winner : NET.winner;
-const myTurn = () => !NET.id || (S.team === NET.team && !NET.sending && !NET.done);
+const myTurn = () => !NET.id ? !(botGame && (S.team === BOT || botBusy)) : (S.team === NET.team && !NET.sending && !NET.done);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const onWeb = location.protocol.startsWith('http');                    // opened as a file: hot-seat only
 const HOME = location.pathname.replace(/[^/]*$/, '');                     // '/' live, '/preview/' for a preview copy
@@ -2042,7 +2177,8 @@ $('lCancel').addEventListener('click', async () => { setSearching(false); try { 
 $('kofiLobby').addEventListener('click', () => { track('kofi', { where: 'lobby' }); flushEvents(); });
 $('kofiWait').addEventListener('click', () => { track('kofi', { where: 'waiting' }); flushEvents(); });
 $('lFriend').addEventListener('click', () => { track('friend'); flushEvents(); playFriend(); });
-$('lLocal').addEventListener('click', () => { newGame(undefined, randomSeed()); closeLobby(); track('hotseat_start'); hotseatWon = false; });
+$('lLocal').addEventListener('click', () => { botGame = false; newGame(undefined, randomSeed()); closeLobby(); track('hotseat_start'); hotseatWon = false; });
+$('lBot').addEventListener('click', () => { botGame = true; newGame(undefined, randomSeed()); botReset(); closeLobby(); track('hotseat_start', { bot: true }); hotseatWon = false; });
 $('lNotify').addEventListener('click', async () => { if (!await enablePush(true)) flash('Notifications are not available here'); updatePushUi(); });
 $('lName').addEventListener('change', rename);
 $('lName').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
@@ -2085,7 +2221,10 @@ $('menuBtn').addEventListener('click', openMenu);
 $('mClose').addEventListener('click', closeMenu);
 $('menuView').addEventListener('click', e => { if (e.target === $('menuView')) closeMenu(); });
 $('mLobby').addEventListener('click', () => { closeMenu(); if (NET.id) location.href = HOME; else openLobby(); });
-$('mRestart').addEventListener('click', () => { closeMenu(); $('reset').dispatchEvent(new PointerEvent('pointerdown')); track('hotseat_start', { restart: true }); hotseatWon = false; });
+$('mRestart').addEventListener('click', () => {
+  closeMenu(); $('reset').dispatchEvent(new PointerEvent('pointerdown')); if (botGame) botReset();
+  track('hotseat_start', botGame ? { restart: true, bot: true } : { restart: true }); hotseatWon = false;
+});
 $('mQuit').addEventListener('click', () => {       // step 2: say what quitting means, then confirm
   const opp = oppName();
   $('mTitle').textContent = NET.players[1] ? 'Quit this game? ' + opp + ' wins.' : 'Cancel this game? Nobody has joined yet.';
@@ -2142,6 +2281,7 @@ $('reset').addEventListener('pointerdown', e => {
   e.preventDefault();
   if (falling) return;
   newGame(undefined, randomSeed());
+  if (botGame) botReset();
 });
 
 window.addEventListener('keyup', e => { cmdKeys[e.key.toLowerCase()] = false; });
