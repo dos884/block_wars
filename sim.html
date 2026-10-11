@@ -93,11 +93,6 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:
 .chip.left{position:relative}
 .ubtn{padding:4px 10px;font-size:14px;box-shadow:0 3px 0 var(--ink);display:inline-flex;align-items:center;gap:6px;margin-bottom:4px}
 .dot{width:12px;height:12px;border-radius:50%;border:2px solid var(--ink);display:inline-block;flex:none}
-#unitsPanel{position:absolute;top:calc(100% + 6px);left:0;display:flex;flex-direction:column;gap:6px;min-width:180px;z-index:5}
-#unitsPanel[hidden]{display:none}
-.urow{display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:15px;box-shadow:0 3px 0 var(--ink);text-align:left;justify-content:flex-start}
-.urow .sub{margin-left:auto;font-size:12px}
-.urow.cur{outline:3px solid var(--cmd);outline-offset:1px}
 #controls .acts{flex:1;min-width:0;max-width:230px;align-items:stretch;margin-left:auto}
 .confirm{height:60px;min-width:0;font-size:18px;background:var(--cmd);color:#22303b}
 .dig{height:46px;min-width:0;font-size:15px}
@@ -109,21 +104,21 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:
 .unitswrap{position:relative;pointer-events:auto;align-self:flex-end;display:flex;flex-direction:column;align-items:stretch;gap:8px;width:112px;flex:none}
 .nextbtn{height:48px;min-width:0;font-size:16px;padding:0 10px}
 .unitsbig{height:56px;min-width:0;font-size:17px;padding:0 10px}
-#unitsPanel{top:auto;bottom:calc(100% + 10px)}
-#buildPanel{position:fixed;inset:0;z-index:12;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px}
-#buildPanel[hidden]{display:none}
-.bsheet{max-width:380px;max-height:calc(100vh - 32px);overflow-y:auto}
-.bhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
-#buildClose{appearance:none;border:2px solid var(--ink);background:var(--btn);color:var(--ink);font:inherit;font-weight:800;font-size:18px;
+/* Full-screen panels (Build, Units, Place): title + ✕ stay put, the list scrolls when it doesn't fit. */
+.fpanel{position:fixed;inset:0;z-index:12;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;
+  padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(16px + env(safe-area-inset-bottom,0px))}
+.fpanel[hidden]{display:none}
+.fsheet{max-width:380px;max-height:100%;min-height:0}
+.flist{display:flex;flex-direction:column;gap:8px;overflow-y:auto;min-height:0;overscroll-behavior:contain;padding:2px 2px 6px;margin:0 -2px}
+.bhead{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none}
+.fclose{appearance:none;border:2px solid var(--ink);background:var(--btn);color:var(--ink);font:inherit;font-weight:800;font-size:18px;
   width:40px;height:40px;border-radius:12px;cursor:pointer;flex:none}
-#buildList{display:flex;flex-direction:column;gap:8px}
 .brow{display:flex;align-items:center;gap:12px;padding:8px 12px;height:auto;min-height:60px;text-align:left;font-size:16px;box-shadow:0 3px 0 var(--ink)}
+.brow .bicon{width:34px;font-size:26px;text-align:center;flex:none}
 .brow img{width:34px;height:auto;image-rendering:pixelated;flex:none}
 .brow .bname{flex:1}
 .brow .sub{font-size:14px;font-weight:800}
-#placeMenu{position:absolute;bottom:calc(100% + 10px);right:0;z-index:5;display:flex;flex-direction:column;gap:6px;min-width:190px}
-#placeMenu[hidden]{display:none}
-#placeMenu .btn{height:48px;font-size:15px;box-shadow:0 3px 0 var(--ink);padding:0 12px;text-align:left}
+.brow.cur{outline:3px solid var(--cmd);outline-offset:1px}
 #winView{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:8;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#fff;text-align:center;padding:16px}
 #winView[hidden]{display:none}
 #winText{font-size:34px;font-weight:800}
@@ -353,10 +348,25 @@ body.waiting #controls .leftpad, body.waiting #controls .cgrid{display:none}
 </div>
 
 <div id="toast" role="status" hidden></div>
-<div id="buildPanel" hidden>
-  <div class="msheet bsheet" role="dialog" aria-modal="true" aria-labelledby="buildTitle">
-    <div class="bhead"><div class="mtitle" id="buildTitle">Build a unit</div><button id="buildClose" aria-label="Close">✕</button></div>
-    <div id="buildList"></div>
+<div id="buildPanel" class="fpanel" hidden>
+  <div class="msheet fsheet" role="dialog" aria-modal="true" aria-labelledby="buildTitle">
+    <div class="bhead"><div class="mtitle" id="buildTitle">Build a unit</div><button class="fclose" aria-label="Close">✕</button></div>
+    <div id="buildList" class="flist"></div>
+  </div>
+</div>
+<div id="unitsPanel" class="fpanel" hidden>
+  <div class="msheet fsheet" role="dialog" aria-modal="true" aria-labelledby="unitsTitle">
+    <div class="bhead"><div class="mtitle" id="unitsTitle">Units</div><button class="fclose" aria-label="Close">✕</button></div>
+    <div id="unitsList" class="flist"></div>
+  </div>
+</div>
+<div id="placeMenu" class="fpanel" hidden>
+  <div class="msheet fsheet" role="dialog" aria-modal="true" aria-labelledby="placeTitle">
+    <div class="bhead"><div class="mtitle" id="placeTitle">Place a block</div><button class="fclose" aria-label="Close">✕</button></div>
+    <div class="flist">
+      <button class="btn brow" data-place="stone"><span class="bicon">🧱</span><span class="bname">Stone block</span><span class="sub">25 gold</span></button>
+      <button class="btn brow" data-place="ladder"><span class="bicon">🪜</span><span class="bname">Ladder</span><span class="sub">10 gold</span></button>
+    </div>
   </div>
 </div>
 <div id="tut" role="status" hidden>
@@ -410,7 +420,6 @@ body.waiting #controls .leftpad, body.waiting #controls .cgrid{display:none}
     <a class="btn kofi bigkofi" id="kofiWait" href="https://ko-fi.com/shmooti" target="_blank" rel="noopener">☕ Support on Ko-fi</a>
   </div>
   <div class="leftpad">
-    <div id="unitsPanel" hidden></div>
     <div class="selrow">
       <button class="btn cbtn" id="unitsBtn" aria-haspopup="true" aria-expanded="false" aria-controls="unitsPanel">Units ▴</button>
       <button class="btn cbtn" data-act="next" aria-label="Select the next unit that hasn't moved">Next ▸</button>
@@ -418,10 +427,6 @@ body.waiting #controls .leftpad, body.waiting #controls .cgrid{display:none}
     <div id="joy" class="joy" role="application" aria-label="Move: drag to walk the selected unit, let go to stop on a tile"><div class="knob"></div></div>
   </div>
   <div class="cgrid">
-    <div id="placeMenu" hidden>
-      <button class="btn" data-place="stone">🧱 Stone block · 25 gold</button>
-      <button class="btn" data-place="ladder">🪜 Ladder · 10 gold</button>
-    </div>
     <button class="btn cbtn" data-act="up" aria-label="Fly one block higher" hidden>▲ Up</button>
     <button class="btn cbtn" data-act="down" aria-label="Fly one block lower" hidden>▼ Down</button>
     <button class="btn cbtn dig" data-act="attack" aria-pressed="false">Attack</button>
@@ -1786,26 +1791,52 @@ function cellFromTap(cx, cy) {
 
 /* ---------- Units menu ---------- */
 const hex = c => '#' + c.toString(16).padStart(6, '0');
+const unitPics = new Map();                      // type,team → picture for the panels (made once)
+function unitPic(type, team) {
+  const key = type + ',' + team;
+  if (!unitPics.has(key)) unitPics.set(key, unitTexture(type, team, type === 'screw' ? 0 : 'idle').image.toDataURL());
+  return unitPics.get(key);
+}
 function renderUnitsPanel() {
-  const panel = $('unitsPanel');
+  const panel = $('unitsList');
   panel.innerHTML = '';
+  let ready = 0, all = 0;
   S.units.forEach((u, k) => {
     if (u.team !== viewTeam() || u.dead) return;
+    all++; if (!u.moved) ready++;
     const b = document.createElement('button');
-    b.className = 'btn urow' + (k === sel ? ' cur' : '');
-    b.innerHTML = '<span class="dot" style="background:' + hex(TEAM_COLORS[u.team]) + '"></span>' + unitName(u) +
+    b.className = 'btn brow' + (k === sel ? ' cur' : '');
+    b.innerHTML = '<img alt="" src="' + unitPic(u.type, u.team) + '"><span class="bname">' + unitName(u) + '</span>' +
       '<span class="sub">' + u.hp + ' HP · ' + (u.moved ? 'moved' : 'ready') + '</span>';
     b.addEventListener('pointerdown', e => { e.preventDefault(); selectUnit(k); toggleUnits(false); });
     panel.appendChild(b);
   });
+  $('unitsTitle').textContent = 'Units · ' + ready + ' of ' + all + ' ready';
 }
-function toggleUnits(open) {
-  const panel = $('unitsPanel'), btn = $('unitsBtn');
+// The full-screen panels: only one is open at a time; ✕, a tap outside or a pick closes it.
+const PANELS = { unitsPanel: ['unitsBtn', 'Units'], buildPanel: ['buildBtn', 'Build'], placeMenu: [null, 'Place'] };
+function togglePanel(id, open) {
+  const panel = $(id), [btnId, label] = PANELS[id];
   const show = open === undefined ? panel.hidden : open;
+  if (show) for (const other in PANELS) if (other !== id) togglePanel(other, false);
   panel.hidden = !show;
+  const btn = btnId ? $(btnId) : document.querySelector('[data-act="place"]');
   btn.setAttribute('aria-expanded', String(show));
-  btn.textContent = show ? 'Units ▾' : 'Units ▴';
-  if (show) renderUnitsPanel();
+  if (btnId || !placeMode) btn.textContent = label + (show ? ' ▾' : ' ▴');
+  if (show) ({ unitsPanel: renderUnitsPanel, buildPanel: renderBuildPanel, placeMenu: renderPlaceMenu })[id]();
+}
+const anyPanelOpen = () => Object.keys(PANELS).some(id => !$(id).hidden);
+const closePanels = () => { for (const id in PANELS) togglePanel(id, false); };
+function toggleUnits(open) { togglePanel('unitsPanel', open); }
+function toggleBuild(open) { togglePanel('buildPanel', open); }
+function togglePlace(open) { togglePanel('placeMenu', open); }
+function renderPlaceMenu() {
+  $('placeTitle').textContent = 'Place a block · ' + S.gold[S.team] + ' gold';
+  document.querySelectorAll('[data-place]').forEach(b => {
+    const cost = placeCost(S, b.dataset.place);
+    b.querySelector('.sub').textContent = cost + ' gold';
+    b.disabled = !myTurn() || S.gold[S.team] < cost;
+  });
 }
 function selectUnit(k) {
   if (k === sel) return;
@@ -1840,14 +1871,6 @@ function renderBuildPanel() {
     });
     panel.appendChild(b);
   }
-}
-function toggleBuild(open) {
-  const panel = $('buildPanel'), btn = $('buildBtn');
-  const show = open === undefined ? panel.hidden : open;
-  panel.hidden = !show;
-  btn.setAttribute('aria-expanded', String(show));
-  btn.textContent = show ? 'Build ▾' : 'Build ▴';
-  if (show) { toggleUnits(false); $('placeMenu').hidden = true; renderBuildPanel(); }
 }
 // Capture from where the unit is, or where it will be once its planned move is confirmed.
 function captureTarget() {
@@ -1914,7 +1937,7 @@ function refreshHud() {
   const waiting = !!NET.id && NET.team >= 0 && S.team !== NET.team && winnerNow() < 0 && NET.desync < 0;
   if (waiting !== document.body.classList.contains('waiting')) {
     document.body.classList.toggle('waiting', waiting);
-    if (waiting) { toggleUnits(false); toggleBuild(false); }
+    if (waiting) closePanels();
   }
   if (waiting) { $('waitName').textContent = 'Waiting for ' + (oppName() || 'your opponent') + '…'; offerNotifications(); }
   if (!$('unitsPanel').hidden) renderUnitsPanel();
@@ -2041,8 +2064,8 @@ function act(a) {
     if (range.has(cellKey(...t))) { pending = t; showRange(); }
     else flash(a === 'up' ? "Can't fly higher here" : "Can't fly lower here");
   } else if (a === 'place') {                     // builder: open the little menu (or stop placing)
-    if (placeMode) { setMode(null); $('placeMenu').hidden = true; }
-    else { toggleBuild(false); $('placeMenu').hidden = !$('placeMenu').hidden; }
+    if (placeMode) { setMode(null); togglePlace(false); }
+    else togglePlace();
   } else if (a === 'dig') {
     setMode(digMode ? null : 'dig');
   } else if (a === 'attack') {
@@ -2709,13 +2732,16 @@ document.querySelectorAll('[data-act]').forEach(el => {
   ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => el.addEventListener(t, () => release(el)));
   el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(el.dataset.act); } });
 });
-$('unitsBtn').addEventListener('pointerdown', e => { e.preventDefault(); toggleBuild(false); toggleUnits(); });
+$('unitsBtn').addEventListener('pointerdown', e => { e.preventDefault(); toggleUnits(); });
 $('buildBtn').addEventListener('pointerdown', e => { e.preventDefault(); toggleBuild(); });
-$('buildClose').addEventListener('click', () => toggleBuild(false));
-$('buildPanel').addEventListener('pointerdown', e => { if (e.target === $('buildPanel')) toggleBuild(false); });
+for (const id in PANELS) {
+  $(id).querySelector('.fclose').addEventListener('click', () => togglePanel(id, false));
+  $(id).addEventListener('pointerdown', e => { if (e.target === $(id)) togglePanel(id, false); });   // tap outside
+}
 document.querySelectorAll('[data-place]').forEach(b => b.addEventListener('pointerdown', e => {
   e.preventDefault();
-  $('placeMenu').hidden = true;
+  if (b.disabled) return;
+  togglePlace(false);
   placeMode = b.dataset.place; setMode('place');
   flash('Tap a block face: the ' + (placeMode === 'stone' ? 'stone' : 'ladder') + ' goes next to it');
 }));
@@ -2776,6 +2802,7 @@ window.addEventListener('keydown', e => {
   if (k === '[') { act('layerDown'); return; }
   if (k === 'l') { act('layerAuto'); return; }
   if (k === 'u') { toggleUnits(); return; }
+  if (k === 'escape' && anyPanelOpen()) { closePanels(); return; }
 });
 
 /* ---------- Camera: swipe to rotate, pinch / wheel to zoom ---------- */
@@ -2903,7 +2930,7 @@ canvas.addEventListener('pointerup', e => {
   cancelPress();
   if (commander) { tap = null; return; }
   if (tap && e.pointerId === tap.id && performance.now() - tap.t < 300) {
-    if (!$('unitsPanel').hidden || !$('buildPanel').hidden) { toggleUnits(false); toggleBuild(false); tap = null; return; }
+    if (anyPanelOpen()) { closePanels(); tap = null; return; }
     if (attackMode) tryAttack(e.clientX, e.clientY);
     else if (digMode) tryDig(e.clientX, e.clientY);
     else if (placeMode) tryPlace(e.clientX, e.clientY);
