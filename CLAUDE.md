@@ -20,13 +20,14 @@
 ## The game
 - Mobile-first (Android), web app, turn-based. "Advance Wars × Minecraft", no redstone. One obvious, cute base game first; modders later.
 - Quality bar: a solid 6-7/10 product that can grow to 8. Polish matters, scope creep doesn't.
-- Fixed bases build units (one per turn); capture the enemy base to win. Voxel terrain: digging, collapses, finite water/floods, undo.
+- Fixed bases build units (rules 7+: as many per turn as your gold allows; before that one per turn); capture the enemy base to win. Voxel terrain: digging, collapses, finite water/floods, undo.
 - Rules are VERSIONED (`RULES` in sim-core.js). A match stores the version (and map seed) it started with, so stored games always replay exactly. New games use `LATEST_RULES`.
   - 1: original (villages, 100/turn each, original damage).
   - 2: faster kills: same type vs same type dies in 2 hits from full health (base 6); the triangle's winner (soldier > spearman > knight > soldier) kills outright even when hurt.
   - 3: rules 2 plus the gold economy: no villages; 140 gold blocks per side (10,500 gold) underground in columns 3-7 deep, random per match (seed) but mirrored so both sides dig the same; builders mine them for +75 at once; bases pay 50/turn. Only builders dig. Digging below your feet leaves a ladder in that cell and takes the builder down into the hole. Units (not knights) climb ladders; knights can step up one block. Gold shows in the layer view (▲▼).
   - 4: rules 3 plus each side starts with a builder (behind its 3 soldiers), and builders cost 500 (`costOf`; per-rules `costs`).
-  - 6 (current): rules 5 with much more gold, spread evenly but randomly: a 4-column cluster (3-7 deep) in every ~15×15 square of each half (~420 blocks = 31,500 gold a side, mirrored). `placeGold(..., 'grid')`.
+  - 7 (current): rules 6 with no limit on units built per turn; the first appears on the base tile, the rest on the nearest free tile around it (`buildSpot`, rings of 1-3).
+  - 6: rules 5 with much more gold, spread evenly but randomly: a 4-column cluster (3-7 deep) in every ~15×15 square of each half (~420 blocks = 31,500 gold a side, mirrored). `placeGold(..., 'grid')`.
   - 5: adds the Aerial Screw (`screw`, 400, move 8): flies with its own height, one block across/up/down per move through open air (can't enter blocks), stays at its height, no dig/capture, drops stones on enemies next to it (±2 up/down) or anywhere straight below. Only archers (8), spearmen (6) and screws (6) can hit it. Damage table in `RULES[5].damage`. New unit types are appended to `TYPES` (the hash uses the index).
 
 ## Current code

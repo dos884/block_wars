@@ -1776,7 +1776,7 @@ function renderBuildPanel() {
       const nu = buildUnit(S, type);
       if (nu) countAct('build');
       endAction(S);
-      toggleBuild(false);
+      if (!typesFor(S).some(t => canBuild(S, t))) toggleBuild(false);   // keep the menu open while you can build more
       if (nu) flash(t.label + ' ready next turn');
       refreshHud();
     });

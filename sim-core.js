@@ -219,7 +219,9 @@ RULES[5] = {
 };
 //  6: much more gold, spread evenly but randomly: a 4-column cluster in every ~15 x 15 square of each half.
 RULES[6] = { ...RULES[5], goldLayout: 'grid' };
-const LATEST_RULES = 6;
+//  7: no limit on units built per turn: as many as your gold allows; extra ones appear next to the base.
+RULES[7] = { ...RULES[6], unlimitedBuild: true };
+const LATEST_RULES = 7;
 // Flying (rules 5+): which units fly, which can hit a flyer, and how high a flyer hovers over a column.
 const flies = (s, u) => !!UNIT_TYPES[u.type].flies && !!RULES[s.rules || 1].flyer;
 const hitsFlyers = type => type === 'archer' || type === 'spearman' || type === 'screw';
@@ -623,16 +625,33 @@ function capture(s, u) {
   return true;
 }
 const baseOf = (s, team) => s.buildings.find(b => b.kind === 'base' && b.owner === team) || null;
+// Where a new unit appears: the base tile; under rules 7 (no limit per turn), if that's taken, the nearest free
+// tile around the base (rings of 1-3 tiles, a fixed order). null if there's no room.
+function buildSpot(s) {
+  const b = baseOf(s, s.team);
+  if (!b) return null;
+  if (!unitAt(s, b.x, b.y, b.z) && !solidAt(s, b.x, b.y, b.z)) return [b.x, b.y, b.z];
+  if (!RULES[s.rules || 1].unlimitedBuild) return null;
+  for (let r = 1; r <= 3; r++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+    if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+    const x = b.x + dx, z = b.z + dz;
+    if (x < 0 || x >= W || z < 0 || z >= D) continue;
+    let y = H; while (y > 1 && !s.g[idx(x, y - 1, z)]) y--;
+    if (y < H && freeCell(s, x, y, z)) return [x, y, z];
+  }
+  return null;
+}
 function canBuild(s, type) {
   const b = baseOf(s, s.team), t = UNIT_TYPES[type];
-  if (s.winner >= 0 || !b || !t || s.built || s.gold[s.team] < costOf(s, type)) return false;
+  if (s.winner >= 0 || !b || !t || s.gold[s.team] < costOf(s, type)) return false;
+  if (s.built && !RULES[s.rules || 1].unlimitedBuild) return false;      // one unit a turn (before rules 7)
   if (t.flies && !RULES[s.rules || 1].flyer) return false;
-  return !unitAt(s, b.x, b.y, b.z) && !solidAt(s, b.x, b.y, b.z);
+  return !!buildSpot(s);
 }
 function buildUnit(s, type) {
   if (!canBuild(s, type)) return null;
-  const b = baseOf(s, s.team);
-  const u = { id: s.units.length, type, team: s.team, x: b.x, y: b.y, z: b.z, hp: MAX_HP, moved: true, acted: true, dead: false };
+  const [x, y, z] = buildSpot(s);
+  const u = { id: s.units.length, type, team: s.team, x, y, z, hp: MAX_HP, moved: true, acted: true, dead: false };
   s.units.push(u);                               // new units wait until next turn
   s.gold[s.team] -= costOf(s, type);
   s.built = true;
