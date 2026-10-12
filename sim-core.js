@@ -214,7 +214,7 @@ const TEAM_COLORS = [0x3b82c4, 0xe0453a];
 const MAX_HP = 10;
 
 /* ---------- Unit types: one table, so they're easy to tune (and later, to mod) ---------- */
-const TYPES = ['soldier', 'spearman', 'knight', 'archer', 'builder', 'screw'];   // new types go at the end (the hash uses the index)
+const TYPES = ['soldier', 'spearman', 'knight', 'archer', 'builder', 'screw', 'first', 'vampire', 'minion'];   // new types go at the end (the hash uses the index)
 const UNIT_TYPES = {
   soldier:  { label: 'Soldier',  move: 6, cost: 100, dig: 'soft', capture: true },
   spearman: { label: 'Spearman', move: 6, cost: 150, dig: 'soft', capture: true },
@@ -222,6 +222,10 @@ const UNIT_TYPES = {
   archer:   { label: 'Archer',   move: 6, cost: 200, dig: 'soft', capture: true, ranged: true },
   builder:  { label: 'Builder',  move: 6, cost: 150, dig: 'hard', capture: true },
   screw:    { label: 'Aerial Screw', move: 8, cost: 400, dig: 'none', capture: false, flies: true },   // rules 5+
+  // The vampire army (rules 10, Red in a "vampires" match): never built, no gold. Vampires shoot any tile up to 6 away.
+  first:    { label: 'First Vampire', move: 12, cost: 0, dig: 'hard', digReach: 10, capture: false, ranged: true, reach: [1, 6], vamp: true, feeds: true },
+  vampire:  { label: 'Vampire', move: 12, cost: 0, dig: 'hard', digReach: 10, capture: false, ranged: true, reach: [1, 6], vamp: true, feeds: true },
+  minion:   { label: 'Minion', move: 8, cost: 0, dig: 'soft', capture: false, vamp: true },
 };
 // Base damage (out of 10 HP) by attacker row and defender column, before scaling by the attacker's health.
 // Soldier beats spearman, spearman beats knight, knight beats soldier.
@@ -284,11 +288,31 @@ RULES[8] = { ...RULES[7], place: { stone: 25, ladder: 10 } };
 //  9: stone and ladders cost 5; archers shoot 2-9 tiles (+1 from 2+ blocks higher) but need a clear line (arrows stop
 //     at blocks); a day/night cycle (6 rounds each, no effect yet); 6 villages with huts and ponds (no effect yet).
 RULES[9] = { ...RULES[8], place: { stone: 5, ladder: 5 }, archerRange: 9, sight: true, dayLength: 6, villageCount: 3 };
-const LATEST_RULES = 9;
+// 10: rules 9 plus the vampire army: a match can be "humans" (as before) or "vampires" (Red is the vampires).
+//     Water kills: any water in a vampire's cell, however little, and it dies (vampires can't step into water).
+//     Vampires start as the First alone in a sealed cave under Red's half; no base, no gold. By day, a vampire that
+//     starts Red's turn with open sky above it burns. Standing on a live village's square, a vampire Feeds (like
+//     Capture); 3 feeds kill the village and a minion is born there. A minion becomes a vampire after 1 kill.
+//     Humans win when the First dies (all vampires die with it); vampires when every village is dead.
+RULES[10] = {
+  ...RULES[9], vampires: true,
+  damage: (() => {
+    const d = {};
+    for (const [a, row] of Object.entries(RULES[5].damage)) d[a] = { ...row, first: 0, vampire: 0, minion: 0 };
+    const vsVamp = { soldier: 4, spearman: 5, knight: 5, archer: 4, builder: 2, screw: 4 };
+    for (const a in vsVamp) { d[a].first = d[a].vampire = vsVamp[a]; d[a].minion = vsVamp[a] + 2; }
+    const bite = { soldier: 6, spearman: 6, knight: 6, archer: 6, builder: 6, screw: 6, first: 0, vampire: 0, minion: 0 };
+    d.first = { ...bite }; d.vampire = { ...bite };
+    d.minion = { soldier: 3, spearman: 3, knight: 3, archer: 3, builder: 4, screw: 0, first: 0, vampire: 0, minion: 0 };
+    return d;
+  })(),
+};
+const LATEST_RULES = 10;
+const FEED_TURNS = 3;
 // Flying (rules 5+): which units fly, which can hit a flyer, and how high a flyer hovers over a column.
 const flies = (s, u) => !!UNIT_TYPES[u.type].flies && !!RULES[s.rules || 1].flyer;
-const hitsFlyers = type => type === 'archer' || type === 'spearman' || type === 'screw';
-const typesFor = s => TYPES.filter(t => !UNIT_TYPES[t].flies || RULES[s.rules || 1].flyer);
+const hitsFlyers = type => type === 'archer' || type === 'spearman' || type === 'screw' || type === 'first' || type === 'vampire';
+const typesFor = s => TYPES.filter(t => !UNIT_TYPES[t].vamp && (!UNIT_TYPES[t].flies || RULES[s.rules || 1].flyer));
 // What a unit costs under these rules.
 const costOf = (s, type) => ((RULES[s.rules || 1].costs || {})[type]) ?? UNIT_TYPES[type].cost;
 //                air grass dirt stone wood bedrock leaves gold wall roof
@@ -390,6 +414,11 @@ function waterHead(s, i) {
 // down into the cell below if there's room, otherwise sideways toward lower pressure.
 const DIR_X = [1, 0, -1, 0], DIR_Z = [0, 1, 0, -1];
 function waterStep(s) {
+  const moved = waterTick(s);
+  if (moved) waterKills(s);
+  return moved;
+}
+function waterTick(s) {
   if (!s.wnext.length) return false;
   const list = Int32Array.from(s.wnext).sort();   // numeric, ascending: a fixed order keeps it deterministic
   s.wnext = [];
@@ -446,8 +475,13 @@ const zl = i => mix(Math.imul(i, 32) + 77777);
 function addLadder(s, i) { if (s.lad && !s.lad.has(i)) { s.lad.add(i); s.lh ^= zl(i); } }
 function dropLadder(s, i) { if (s.lad && s.lad.has(i)) { s.lad.delete(i); s.lh ^= zl(i); } }
 const hasLadder = (s, x, y, z) => !!s.lad && inGrid(x, y, z) && s.lad.has(idx(x, y, z));
-const climbsLadders = u => u.type !== 'knight';
-const onLadder = (s, u) => climbsLadders(u) && hasLadder(s, u.x, u.y, u.z);
+const climbsLadders = u => u.type !== 'knight' && !UNIT_TYPES[u.type].vamp;   // vampires climb walls instead
+// Vampires with "Climb walls" on hold on anywhere beside a wall, like a ladder.
+const clingAt = (s, u, x, y, z) => !!u.cling && UNIT_TYPES[u.type].vamp &&
+  (solidAt(s, x + 1, y, z) || solidAt(s, x - 1, y, z) || solidAt(s, x, y, z + 1) || solidAt(s, x, y, z - 1));
+// Can this unit hold on at this cell (a ladder, or a wall for a clinging vampire)?
+const holdAt = (s, u, x, y, z) => (climbsLadders(u) && hasLadder(s, x, y, z)) || clingAt(s, u, x, y, z);
+const onLadder = (s, u) => holdAt(s, u, u.x, u.y, u.z);
 
 function setCell(s, i, v) {
   const old = s.g[i];
@@ -468,7 +502,7 @@ function setCell(s, i, v) {
   else { if (x < r.x0) r.x0 = x; if (x > r.x1) r.x1 = x; if (z < r.z0) r.z0 = z; if (z > r.z1) r.z1 = z; }
 }
 
-function newState(rules = LATEST_RULES, seed = 1) {
+function newState(rules = LATEST_RULES, seed = 1, mode = 'humans') {
   const R = RULES[rules];
   if (!R) throw new Error('unknown rules version ' + rules);
   const w = new Uint8Array(N);
@@ -479,14 +513,24 @@ function newState(rules = LATEST_RULES, seed = 1) {
   const spots = [];
   spots.push(...UNIT_SPAWNS);
   if (R.startBuilder) spots.push([0, cx - SPAWN_OFFSET - 1, cz], [1, cx + SPAWN_OFFSET + 1, cz]);   // a builder behind each army
-  const units = spots.map(([team, x, z], k) => ({ id: k, type: k >= UNIT_SPAWNS.length ? 'builder' : 'soldier', team, x, y: groundY(g, x, z), z, hp: MAX_HP, moved: false, acted: false, dead: false }));
-  const buildings = BUILDING_SPOTS.filter(([, , kind]) => kind === 'base' || R.villages !== false)
+  const vamps = R.vampires && mode === 'vampires';
+  const units = spots.filter(([team]) => !(vamps && team === 1))
+    .map(([team, x, z], k) => ({ id: k, type: k >= UNIT_SPAWNS.length - (vamps ? 3 : 0) ? 'builder' : 'soldier', team, x, y: groundY(g, x, z), z, hp: MAX_HP, moved: false, acted: false, dead: false }));
+  const buildings = BUILDING_SPOTS.filter(([, , kind, owner]) => (kind === 'base' && !(vamps && owner === 1)) || (kind !== 'base' && R.villages !== false))
     .map(([x, z, kind, owner]) => ({ kind, owner, x, y: groundY(g, x, z), z, cp: CAPTURE_PTS, capBy: -1 }));
-  return { rules, seed, villages: villages.map(v => ({ x: v.x, y: groundY(g, v.x, v.z), z: v.z, huts: v.huts.map(([dx, dz]) => [v.x + dx, v.z + dz]) })),
+  const st = { rules, seed, mode: vamps ? 'vampires' : 'humans',
+           villages: villages.map(v => ({ x: v.x, y: groundY(g, v.x, v.z), z: v.z, huts: v.huts.map(([dx, dz]) => [v.x + dx, v.z + dz]), alive: true, feed: 0, feedBy: -1 })),
            lad: R.ladders ? new Set() : undefined, lh: 0, g, units, buildings, gold: [START_GOLD, START_GOLD], built: false, winner: -1, team: 0, turn: 1, moves: 0, events: [], loot: [], nextLoot: 1, inv: [0, 0, 0, 0, 0, 0, 0],
            bh: blockHash(g), changed: [], region: null,
            w, wh: waterHash(w), wnext: [], wmark: new Int32Array(N), wgen: 1, dfail: new Int32Array(N),
            jr: null, jg: new Int32Array(N), jw: new Int32Array(N), jstamp: 0, history: [], cursor: 0, wchanged: [], wtick: 0 };
+  if (vamps) {                                    // the First waits in its sealed cave under Red's half
+    const [x, y, z] = digLair(st);                // it stands by the cave's west wall, so it can climb out
+    st.units.push({ id: st.units.length, type: 'first', team: 1, x: x - 1, y, z, hp: MAX_HP, moved: false, acted: false, dead: false });
+    st.gold[1] = 0;
+    st.bh = blockHash(st.g);
+  }
+  return st;
 }
 
 const solidAt = (s, x, y, z) => inGrid(x, y, z) && s.g[idx(x, y, z)] !== AIR;
@@ -496,6 +540,7 @@ function unitAt(s, x, y, z, except) {
 }
 // A cell a unit can occupy: inside the world's sides, not solid, not taken by another unit.
 function freeCell(s, x, y, z, except) {
+  if (except && UNIT_TYPES[except.type].vamp && inGrid(x, y, z) && s.w[idx(x, y, z)]) return false;   // vampires keep out of water
   return x >= 0 && x < W && z >= 0 && z < D && y >= 1 && y < H + 4 && !solidAt(s, x, y, z) && !unitAt(s, x, y, z, except);
 }
 // Commit a unit to a cell (the snapped result of walking).
@@ -524,6 +569,7 @@ function settleUnits(s) {
       if (u.y > 1 && !solidAt(s, u.x, u.y - 1, u.z) && !unitAt(s, u.x, u.y - 1, u.z, u) && !onLadder(s, u)) { u.y--; moved = true; }
     }
   }
+  waterKills(s);                                 // a vampire that fell into water dies
   collectLoot(s);
 }
 
@@ -535,7 +581,7 @@ const cellKey = (x, y, z) => x + ',' + y + ',' + z;
 function standY(s, x, y, z, u) {
   if (!freeCell(s, x, y, z, u)) return -1;
   // Drop until something holds you: ground, a unit below, or (for climbers) a ladder.
-  while (y > 1 && !solidAt(s, x, y - 1, z) && !unitAt(s, x, y - 1, z, u) && !(climbsLadders(u) && hasLadder(s, x, y, z))) y--;
+  while (y > 1 && !solidAt(s, x, y - 1, z) && !unitAt(s, x, y - 1, z, u) && !holdAt(s, u, x, y, z)) y--;
   return y;
 }
 // One step from (x,y,z) toward a neighbouring column: walk flat, drop, or climb one. Returns the new y, or -1.
@@ -564,8 +610,8 @@ function stepsFrom(s, u, x, y, z) {
     const ny = stepTo(s, u, x, y, z, dx, dz);
     if (ny >= 0) out.push([x + dx, ny, z + dz]);
   }
-  if (climbsLadders(u) && hasLadder(s, x, y, z)) {
-    if (hasLadder(s, x, y + 1, z) && freeCell(s, x, y + 1, z, u)) out.push([x, y + 1, z]);   // climb up
+  if (holdAt(s, u, x, y, z)) {
+    if (holdAt(s, u, x, y + 1, z) && freeCell(s, x, y + 1, z, u)) out.push([x, y + 1, z]);   // climb up
     const dy = y > 1 ? standY(s, x, y - 1, z, u) : -1;                                          // climb (or drop) down
     if (dy >= 1) out.push([x, dy, z]);
   }
@@ -598,15 +644,17 @@ function moveUnit(s, u, x, y, z) {
 /* ---------- Digging: break any block within DIG_REACH of the unit (no limit per turn) ---------- */
 const DIG_REACH = 3;
 // What a unit can dig: 'none', 'soft' or 'hard'. Under rules 3 only builders dig.
-const digTool = (s, u) => RULES[s.rules || 1].builderDigs && u.type !== 'builder' ? 'none' : UNIT_TYPES[u.type].dig;
+const digTool = (s, u) => RULES[s.rules || 1].builderDigs && u.type !== 'builder' && !UNIT_TYPES[u.type].vamp ? 'none' : UNIT_TYPES[u.type].dig;
 function canDig(s, u, x, y, z) {
   if (u.dead || u.team !== s.team || !inGrid(x, y, z)) return false;
   const m = s.g[idx(x, y, z)];
   if (m === AIR || m === BEDROCK) return false;
   const tool = digTool(s, u);
   if (tool === 'none' || (tool === 'soft' && !SOFT[m])) return false;
-  return Math.max(Math.abs(x - u.x), Math.abs(y - u.y), Math.abs(z - u.z)) <= DIG_REACH;
+  return Math.max(Math.abs(x - u.x), Math.abs(y - u.y), Math.abs(z - u.z)) <= digReach(u);
 }
+// How far a unit digs: 3, or 10 for vampires (they're made for tunnelling).
+const digReach = u => UNIT_TYPES[u.type].digReach || DIG_REACH;
 // Placing (rules 8): what a builder can put where, and what it costs.
 const placeCost = (s, what) => ((RULES[s.rules || 1].place || {})[what]);
 function canPlace(s, u, what, x, y, z) {
@@ -633,7 +681,7 @@ function dig(s, u, x, y, z) {
   if (!canDig(s, u, x, y, z)) return false;
   const m = s.g[idx(x, y, z)];
   setCell(s, idx(x, y, z), AIR);
-  if (RULES[s.rules || 1].ladders && y < u.y) addLadder(s, idx(x, y, z));  // digging below your feet leaves a ladder
+  if (RULES[s.rules || 1].ladders && y < u.y && climbsLadders(u)) addLadder(s, idx(x, y, z));  // digging below your feet leaves a ladder
   // Digging the block under your own feet takes you down into the hole (you don't hang on its ladder).
   if (RULES[s.rules || 1].ladders && x === u.x && z === u.z && y === u.y - 1) { u.y = y; settleUnits(s); }
   if (m === GOLD) s.gold[s.team] += RULES[s.rules || 1].goldValue || 0;   // mining pays at once
@@ -660,8 +708,9 @@ function clearLine(s, a, b) {
 }
 // How far a ranged unit shoots: 2-3 tiles (2-9 under rules 9), one more from 2+ blocks above the target.
 function shotRange(s, a, b) {
-  const d = Math.abs(a.x - b.x) + Math.abs(a.z - b.z), r = RULES[s.rules || 1];
-  if (d < 2 || d > (r.archerRange || 3) + (a.y - b.y >= 2 ? 1 : 0)) return false;
+  const d = Math.abs(a.x - b.x) + Math.abs(a.z - b.z), r = RULES[s.rules || 1], reach = UNIT_TYPES[a.type].reach;
+  if (reach) { if (d < reach[0] || d > reach[1] || (d === 0 && a.y === b.y)) return false; }   // vampires: any tile 1-6 away
+  else if (d < 2 || d > (r.archerRange || 3) + (a.y - b.y >= 2 ? 1 : 0)) return false;
   return !r.sight || clearLine(s, a, b);
 }
 function inReach(s, a, b) {
@@ -683,18 +732,34 @@ function canAttack(s, a, b) {
 function damageOf(s, a, b) {
   const r = RULES[s.rules || 1];
   if (r.beats[a.type] === b.type) return b.hp;
-  return Math.max(1, Math.floor((r.damage[a.type][b.type] * a.hp + 5) / 10));
+  const d = Math.max(1, Math.floor((r.damage[a.type][b.type] * a.hp + 5) / 10));
+  return b.type === 'first' ? Math.max(1, d >> 1) : d;             // the First takes half damage
 }
 function hurt(s, u, d) {
+  if (u.dead) return;
   u.hp = Math.max(0, u.hp - d);
-  if (!u.hp) { u.dead = true; resetCaptures(s); }
+  if (!u.hp) {
+    u.dead = true;
+    if (u.type === 'first') {                    // the First dies: every vampire dies with it, and the humans win
+      for (const v of s.units) if (v.team === u.team && !v.dead) { v.hp = 0; v.dead = true; }
+      s.winner = 1 - u.team;
+    }
+    resetCaptures(s);
+  }
+}
+// A minion that kills becomes a vampire, at full health.
+function promote(s, u, victim) {
+  if (victim.dead && !u.dead && u.type === 'minion') { u.type = 'vampire'; u.hp = MAX_HP; }
 }
 function attack(s, a, b) {
   if (!canAttack(s, a, b)) return false;
   hurt(s, b, damageOf(s, a, b));
+  promote(s, a, b);
   // Survivors strike back if they fight up close and the attacker is next to them (archers never do).
-  if (!b.dead && !UNIT_TYPES[b.type].ranged && (flies(s, a) || flies(s, b) ? !(flies(s, a) && !hitsFlyers(b.type)) && inReach(s, b, a) : adjacent(a, b)))
+  if (!b.dead && !UNIT_TYPES[b.type].ranged && (flies(s, a) || flies(s, b) ? !(flies(s, a) && !hitsFlyers(b.type)) && inReach(s, b, a) : adjacent(a, b))) {
     hurt(s, a, damageOf(s, b, a));
+    promote(s, b, a);
+  }
   a.acted = true; a.moved = true;              // attacking finishes the unit's turn
   s.moves++;
   record(s, { t: 'attack', u: a.id, v: b.id });
@@ -709,6 +774,11 @@ function resetCaptures(s) {
     if (b.capBy < 0) continue;
     const u = s.units[b.capBy];
     if (!u || u.dead || u.x !== b.x || u.y !== b.y || u.z !== b.z) { b.capBy = -1; b.cp = CAPTURE_PTS; }
+  }
+  if (s.mode === 'vampires') for (const v of s.villages) {   // a vampire that leaves the square (or dies) stops feeding
+    if (v.feedBy < 0) continue;
+    const u = s.units[v.feedBy];
+    if (!u || u.dead || !onSquare(u, v)) { v.feedBy = -1; v.feed = 0; }
   }
 }
 function canCapture(s, u) {
@@ -739,6 +809,93 @@ function nightAt(s, turn = s.turn) {
 function roundsLeft(s, turn = s.turn) {
   const L = RULES[s.rules || 1].dayLength;
   return L ? L - ((turn - 1) % L) : 0;
+}
+/* ---------- Vampires (rules 10) ---------- */
+const onSquare = (u, v) => u.x === v.x && u.z === v.z && u.y >= v.y;
+function canFeed(s, u) {
+  if (s.mode !== 'vampires' || s.winner >= 0 || u.dead || u.team !== s.team || u.acted || !UNIT_TYPES[u.type].feeds) return null;
+  return s.villages.find(v => v.alive && onSquare(u, v)) || null;
+}
+function feed(s, u) {
+  const v = canFeed(s, u);
+  if (!v) return false;
+  if (v.feedBy !== u.id) { v.feedBy = u.id; v.feed = 0; }
+  v.feed++;
+  u.acted = true; u.moved = true;
+  s.moves++;
+  record(s, { t: 'feed', u: u.id });
+  if (v.feed >= FEED_TURNS) {                      // the village dies and a minion is born on its square
+    v.alive = false; v.feedBy = -1; v.feed = 0;
+    const c = spotNear(s, v.x, v.z);
+    if (c) { s.units.push({ id: s.units.length, type: 'minion', team: u.team, x: c[0], y: c[1], z: c[2], hp: MAX_HP, moved: true, acted: true, dead: false }); settleUnits(s); }
+    if (s.villages.every(w => !w.alive)) s.winner = u.team;
+  }
+  return true;
+}
+// The first free standing cell at or around (x, z): rings of 1-3, a fixed order.
+function spotNear(s, x0, z0) {
+  for (let r = 0; r <= 3; r++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+    if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+    const x = x0 + dx, z = z0 + dz;
+    if (x < 0 || x >= W || z < 0 || z >= D) continue;
+    let y = H; while (y > 1 && !s.g[idx(x, y - 1, z)]) y--;
+    if (y < H && freeCell(s, x, y, z) && !s.w[idx(x, y, z)]) return [x, y, z];
+  }
+  return null;
+}
+// Nothing but air (or water) above this cell, all the way up.
+function openSky(s, x, y, z) {
+  for (let k = y + 1; k < H; k++) if (s.g[idx(x, k, z)]) return false;
+  return true;
+}
+// "Climb walls" on or off (free, any time in your turn). Letting go of a wall drops you.
+function setCling(s, u, on) {
+  if (s.winner >= 0 || u.dead || u.team !== s.team || !UNIT_TYPES[u.type].vamp || !!u.cling === on) return false;
+  u.cling = on;
+  settleUnits(s);
+  s.moves++;
+  record(s, { t: 'cling', u: u.id, on });
+  return true;
+}
+// Sunrise: by day, a vampire that starts Red's turn under open sky burns.
+function burnInSun(s) {
+  s.burned = [];
+  if (s.mode !== 'vampires' || nightAt(s)) return;
+  for (const u of s.units) {
+    if (u.dead || !UNIT_TYPES[u.type].vamp || u.team !== s.team || !openSky(s, u.x, u.y, u.z)) continue;
+    s.burned.push(u.id);
+    hurt(s, u, u.hp);
+  }
+}
+// Water kills vampires: the moment any water at all is in a vampire's cell, it dies. Checked after every water tick
+// (in the sim and in the browser's animation alike), so it happens at the same step everywhere.
+function waterKills(s) {
+  if (s.mode !== 'vampires') return;
+  for (const u of s.units) {
+    if (u.dead || !UNIT_TYPES[u.type].vamp || !inGrid(u.x, u.y, u.z) || !s.w[idx(u.x, u.y, u.z)]) continue;
+    (s.flooded = s.flooded || []).push(u.id);
+    hurt(s, u, u.hp);
+  }
+}
+// The First's sealed cave: 3 x 3 x 2 of air with 2 blocks of ground over it, under the flattest spot near Red's
+// old base (so it can always dig out in one night).
+function digLair(s) {
+  const cx = (W >> 1) + BASE_X, cz = D >> 1;
+  let best = null;
+  for (let r = 0; r <= 8 && !best; r++) for (let dz = -r; dz <= r && !best; dz++) for (let dx = -r; dx <= r; dx++) {
+    if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+    const x = cx + dx, z = cz + dz;
+    let lo = H, hi = 0;
+    for (let k = -1; k <= 1; k++) for (let j = -1; j <= 1; j++) { const t = groundY(s.g, x + j, z + k); lo = Math.min(lo, t); hi = Math.max(hi, t); }
+    if (hi === lo) { best = [x, lo, z]; break; }
+  }
+  if (!best) { let lo = H; for (let k = -1; k <= 1; k++) for (let j = -1; j <= 1; j++) lo = Math.min(lo, groundY(s.g, cx + j, cz + k)); best = [cx, lo, cz]; }
+  const [x0, top, z0] = best, y0 = top - 4;
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+    for (let y = y0; y < y0 + 2; y++) s.g[idx(x0 + dx, y, z0 + dz)] = AIR;
+    s.g[idx(x0 + dx, y0 + 2, z0 + dz)] = STONE;                 // a stone ceiling, so the roof holds until it's dug
+  }
+  return [x0, y0, z0];
 }
 const baseOf = (s, team) => s.buildings.find(b => b.kind === 'base' && b.owner === team) || null;
 // Where a new unit appears: the base tile; under rules 7 (no limit per turn), if that's taken, the nearest free
@@ -802,6 +959,8 @@ function runAct(s, a) {
   }
   if (a.t === 'attack') return isInt(a.v, 0, s.units.length - 1) && attack(s, u, s.units[a.v]);
   if (a.t === 'capture') return capture(s, u);
+  if (a.t === 'feed') return feed(s, u);
+  if (a.t === 'cling') return typeof a.on === 'boolean' && setCling(s, u, a.on);
   return false;
 }
 // One group, exactly as the browser ran it: one journal entry; a dig's collapse and flood resolve inside it.
@@ -840,7 +999,7 @@ function smallSnap(s) {
   return JSON.parse(JSON.stringify({ units: s.units, loot: s.loot, nextLoot: s.nextLoot, inv: s.inv, team: s.team, turn: s.turn,
     moves: s.moves, bh: s.bh, wh: s.wh, wtick: s.wtick, wnext: s.wnext,
     buildings: s.buildings, gold: s.gold, built: s.built, winner: s.winner,
-    lad: s.lad ? [...s.lad] : undefined, lh: s.lh }));
+    lad: s.lad ? [...s.lad] : undefined, lh: s.lh, villages: s.villages }));
 }
 function applySmall(s, m) {
   s.units = JSON.parse(JSON.stringify(m.units));   // also undoes units that were built
@@ -851,6 +1010,7 @@ function applySmall(s, m) {
   s.inv = m.inv.slice();
   Object.assign(s, { nextLoot: m.nextLoot, team: m.team, turn: m.turn, moves: m.moves, bh: m.bh, wh: m.wh, wtick: m.wtick });
   if (m.lad) { s.lad = new Set(m.lad); s.lh = m.lh; }
+  if (m.villages) s.villages = JSON.parse(JSON.stringify(m.villages));
   s.wgen++; s.wnext = [];                       // fresh wake list (normally empty between actions)
   for (const i of m.wnext) if (s.wmark[i] !== s.wgen) { s.wmark[i] = s.wgen; s.wnext.push(i); }
   s.region = null;
@@ -904,6 +1064,7 @@ function endTurn(s) {
     hurt(s, u, DROWN_DMG);
     s.drowned.push(u.id);
   }
+  burnInSun(s);
   resetCaptures(s);                              // a capturer that fell or was washed off its tile loses progress
 }
 
@@ -1090,6 +1251,10 @@ function stateHash(s) {
   h ^= s.turn; h = Math.imul(h, 0x01000193);
   for (const v of s.inv) { h ^= v; h = Math.imul(h, 0x01000193); }
   if (s.lad) { h ^= s.lh; h = Math.imul(h, 0x01000193); }      // ladders (rules 3; older rules hash as before)
+  if (s.mode === 'vampires') {                                   // villages and clinging (vampire matches only)
+    for (const u of s.units) { h ^= u.cling ? 1 : 0; h = Math.imul(h, 0x01000193); }
+    for (const v of s.villages) for (const k of [v.alive ? 1 : 0, v.feed, v.feedBy + 1]) { h ^= k; h = Math.imul(h, 0x01000193); }
+  }
   return (h >>> 0).toString(16).padStart(8, '0');
 }
 
@@ -1106,7 +1271,7 @@ const BlockSim = {
   TEAM_NAMES, TEAM_COLORS, TYPES, UNIT_TYPES, DAMAGE, RULES, LATEST_RULES, damageOf,
   idx, inGrid, mix, unitName, cellKey, newState, stateHash,
   solidAt, unitAt, stepTo, stepsFrom, moveOf, moveRange, moveUnit, canDig, digTool, dig, canAttack, attack, hasLadder, climbsLadders,
-  canCapture, capture, canBuild, buildUnit, incomeOf, costOf, flies, flyY, typesFor, canPlace, place, placeCost,
+  canCapture, capture, digReach, canFeed, feed, setCling, holdAt, openSky, FEED_TURNS, canBuild, buildUnit, incomeOf, costOf, flies, flyY, typesFor, canPlace, place, placeCost,
   beginAction, endAction, undo, redo, endTurn, gravityStep, waterStep, resolve,
   turnGroups, runGroup, replayTurn, finishTurn, MAX_GROUPS,
 };

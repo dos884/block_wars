@@ -83,6 +83,8 @@ if (!cols.includes('rules')) db.exec('ALTER TABLE matches ADD COLUMN rules INTEG
 if (!cols.includes('quit')) db.exec('ALTER TABLE matches ADD COLUMN quit INTEGER NOT NULL DEFAULT -1');
 // The match's map seed (rules 3+: where the gold is). Older matches have one map: seed 1.
 if (!cols.includes('seed')) db.exec('ALTER TABLE matches ADD COLUMN seed INTEGER NOT NULL DEFAULT 1');
+// Which armies (rules 10+): 'humans' (humans vs humans) or 'vampires' (Red plays the vampires).
+if (!cols.includes('mode')) db.exec("ALTER TABLE matches ADD COLUMN mode TEXT NOT NULL DEFAULT 'humans'");
 // verified = the server replays and checks every turn (a future premium feature); otherwise it only relays them
 // and the players' browsers check each other's hashes. desync = the first turn a browser couldn't reproduce.
 if (!cols.includes('verified')) db.exec(`ALTER TABLE matches ADD COLUMN verified INTEGER NOT NULL DEFAULT 0;
@@ -112,7 +114,7 @@ const q = {
   linkGoogle: db.prepare('UPDATE players SET google = ? WHERE id = ?'),
   moveSeats0: db.prepare('UPDATE matches SET p0 = ? WHERE p0 = ? AND (p1 IS NULL OR p1 != ?)'),
   moveSeats1: db.prepare('UPDATE matches SET p1 = ? WHERE p1 = ? AND (p0 IS NULL OR p0 != ?)'),
-  insertMatch: db.prepare('INSERT INTO matches (id, created, updated, t0, p0, p1, kind, rules, seed) VALUES (?, ?, ?, \'\', ?, ?, ?, ?, ?)'),
+  insertMatch: db.prepare('INSERT INTO matches (id, created, updated, t0, p0, p1, kind, rules, seed, mode) VALUES (?, ?, ?, \'\', ?, ?, ?, ?, ?, ?)'),
   getMatch: db.prepare('SELECT * FROM matches WHERE id = ?'),
   quit: db.prepare('UPDATE matches SET quit = ?, winner = ?, rev = rev + 1, updated = ? WHERE id = ? AND winner < 0'),
   cancel: db.prepare('DELETE FROM matches WHERE id = ? AND p1 IS NULL AND t1 IS NULL'),
@@ -284,12 +286,13 @@ function gameSummary(m, me) {
 }
 function matchView(m, since, me) {
   const turns = q.turnsFrom.all(m.id, since).map(r => ({ n: r.n, team: r.team, ...JSON.parse(r.body) }));
-  return { id: m.id, rules: m.rules, seed: m.seed, rev: m.rev, you: seatOf(m, me), names: [nameOf(m.p0), nameOf(m.p1)], players: [true, !!(m.p1 || m.t1)],
+  return { id: m.id, rules: m.rules, seed: m.seed, mode: m.mode || 'humans', rev: m.rev, you: seatOf(m, me), names: [nameOf(m.p0), nameOf(m.p1)], players: [true, !!(m.p1 || m.t1)],
            winner: m.winner, quit: m.quit, verified: !!m.verified, desync: m.desync, count: m.turns, turns };
 }
-function createMatch(kind, p0, p1) {
+function createMatch(kind, p0, p1, mode = 'humans') {
   const id = newId(6), now = Date.now();
-  q.insertMatch.run(id, now, now, p0, p1, kind, B.LATEST_RULES, process.env.TEST_SEED ? +process.env.TEST_SEED : 1 + crypto.randomInt(2147483000));
+  q.insertMatch.run(id, now, now, p0, p1, kind, B.LATEST_RULES, process.env.TEST_SEED ? +process.env.TEST_SEED : 1 + crypto.randomInt(2147483000),
+    mode === 'vampires' ? 'vampires' : 'humans');
   return id;
 }
 
@@ -430,7 +433,8 @@ async function handle(req, res) {
     need(me);
     if (!allow('match', ip, 60)) throw new Fail(429, 'too many new matches, try again later');
     if (q.openGames.get(me.id, me.id).n >= MAX_OPEN_GAMES) throw new Fail(409, 'finish some of your games first');
-    return send(res, 201, { id: createMatch('invite', me.id, null), team: 0 });
+    const body = await readJson(req).catch(() => ({}));
+    return send(res, 201, { id: createMatch('invite', me.id, null, body && body.mode), team: 0 });
   }
 
   const m = id && q.getMatch.get(id);

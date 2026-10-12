@@ -104,6 +104,21 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:
 .unitswrap{position:relative;pointer-events:auto;align-self:flex-end;display:flex;flex-direction:column;align-items:stretch;gap:8px;width:112px;flex:none}
 .nextbtn{height:48px;min-width:0;font-size:16px;padding:0 10px}
 .unitsbig{height:56px;min-width:0;font-size:17px;padding:0 10px}
+/* Day/night clock under the info card: sun (or moon), one bar per round of this day (or night), and what's left. */
+.hudcol{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-width:0}
+#dnBar{pointer-events:none;display:flex;align-items:center;gap:6px;background:var(--panel);border:2px solid var(--ink);border-radius:999px;
+  padding:2px 10px;font-size:12px;font-weight:800;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+#dnBar[hidden]{display:none}
+#dnIcon{font-size:15px;line-height:1}
+#dnSegs{display:flex;gap:2px;align-items:center}
+#dnSegs i{display:block;width:9px;height:10px;border-radius:3px;border:1px solid var(--ink);background:#f5c542}
+#dnBar.night #dnSegs i{background:#2c3e8f}
+#dnSegs i.past{opacity:.25}
+#dnSegs i.now{transform:scaleY(1.4);box-shadow:0 0 0 1px #fff}
+#vArrow{position:fixed;z-index:6;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:#b3122b;color:#fff;
+  border:2px solid var(--ink);display:flex;align-items:center;justify-content:center;font-size:22px;pointer-events:none;box-shadow:0 0 0 4px rgba(179,18,43,.35)}
+#vArrow[hidden]{display:none}
+#modePanel{z-index:40}
 /* Full-screen panels (Build, Units, Place): title + ✕ stay put, the list scrolls when it doesn't fit. */
 .fpanel{position:fixed;inset:0;z-index:12;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;
   padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(16px + env(safe-area-inset-bottom,0px))}
@@ -261,13 +276,16 @@ body.waiting #controls .leftpad, body.waiting #controls .cgrid{display:none}
 <canvas id="c" aria-label="3D world view. Tap a blue tile to move the selected unit. Swipe to rotate the camera, pinch to zoom."></canvas>
 
 <div id="hud">
+  <div class="hudcol">
   <div class="chip left">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px"><span class="dot" id="udot"></span><b id="uname">Unit</b></div>
     <div class="sub"><span id="ustate">Ready</span> · <span id="pos"></span></div>
-    <div class="sub">Turn <b id="turn">1</b><span id="dnWrap" hidden> · <b id="daynight"></b></span> · Wood <b id="invwood">0</b></div>
+    <div class="sub">Turn <b id="turn">1</b> · Wood <b id="invwood">0</b></div>
     <div class="sub">Gold <b id="gold">0</b> <span id="income"></span></div>
     <div id="netRow" hidden><span class="sub" id="netLine"></span><button class="btn" id="shareBtn" style="padding:2px 8px;font-size:12px;box-shadow:0 2px 0 var(--ink)" hidden>Invite</button></div>
     <div id="status"></div>
+  </div>
+  <div id="dnBar" hidden><span id="dnIcon"></span><span id="dnSegs"></span><span id="dnLeft"></span></div>
   </div>
   <div class="chip" style="text-align:right">
     <div id="hashBox" hidden><div class="sub">State hash</div><div><b id="hash">--------</b></div></div>
@@ -354,6 +372,17 @@ body.waiting #controls .leftpad, body.waiting #controls .cgrid{display:none}
     <div id="buildList" class="flist"></div>
   </div>
 </div>
+<div id="vArrow" hidden aria-hidden="true">➤</div>
+<div id="modePanel" class="fpanel" hidden>
+  <div class="msheet fsheet" role="dialog" aria-modal="true" aria-labelledby="modeTitle">
+    <div class="bhead"><div class="mtitle" id="modeTitle">Choose the armies</div><button class="fclose" aria-label="Close">✕</button></div>
+    <div class="flist">
+      <button class="btn brow" data-mode="humans"><span class="bicon">⚔️</span><span class="bname">Humans vs Humans</span></button>
+      <button class="btn brow" data-mode="vampires"><img alt="" id="modeVampPic"><span class="bname">Humans vs Vampires</span></button>
+      <div class="sub" id="modeNote" style="text-align:center"></div>
+    </div>
+  </div>
+</div>
 <div id="unitsPanel" class="fpanel" hidden>
   <div class="msheet fsheet" role="dialog" aria-modal="true" aria-labelledby="unitsTitle">
     <div class="bhead"><div class="mtitle" id="unitsTitle">Units</div><button class="fclose" aria-label="Close">✕</button></div>
@@ -427,12 +456,15 @@ body.waiting #controls .leftpad, body.waiting #controls .cgrid{display:none}
     <div id="joy" class="joy" role="application" aria-label="Move: drag to walk the selected unit, let go to stop on a tile"><div class="knob"></div></div>
   </div>
   <div class="cgrid">
-    <button class="btn cbtn" data-act="up" aria-label="Fly one block higher" hidden>▲ Up</button>
-    <button class="btn cbtn" data-act="down" aria-label="Fly one block lower" hidden>▼ Down</button>
+    <button class="btn cbtn" data-act="up" aria-label="One block higher" hidden>▲ Up</button>
+    <button class="btn cbtn" data-act="down" aria-label="One block lower" hidden>▼ Down</button>
     <button class="btn cbtn dig" data-act="attack" aria-pressed="false">Attack</button>
     <button class="btn cbtn dig" data-act="dig" aria-pressed="false">Dig</button>
     <button class="btn cbtn dig" data-act="place" aria-pressed="false" hidden>Place ▴</button>
     <button class="btn cbtn" data-act="capture">Capture</button>
+    <button class="btn cbtn" data-act="feed" hidden>Feed</button>
+    <button class="btn cbtn dig" data-act="cling" aria-pressed="false" hidden>Climb walls</button>
+    <button class="btn cbtn dig" data-act="digup" hidden>Dig up</button>
     <button class="btn cbtn" id="buildBtn" aria-haspopup="true" aria-expanded="false" aria-controls="buildPanel">Build ▴</button>
     <button class="btn cbtn" data-act="undo" aria-label="Undo last action">↶ Undo<span id="acount">0</span></button>
     <button class="btn cbtn" data-act="redo" aria-label="Redo">Redo ↷</button>
@@ -451,17 +483,21 @@ body.waiting #controls .leftpad, body.waiting #controls .cgrid{display:none}
    SIM — lives in sim-core.js (shared with the server). The view only reads it and calls its actions.
    ========================================================= */
 const {
-  W, D, H, WD, AIR, GRASS, DIRT, STONE, WOOD, BEDROCK, LEAVES, GOLD, WALL, ROOF, nightAt, roundsLeft, WFULL, MAX_HP, CAPTURE_PTS, INCOME,
+  W, D, H, WD, AIR, GRASS, DIRT, STONE, WOOD, BEDROCK, LEAVES, GOLD, WALL, ROOF, nightAt, roundsLeft, WFULL, DIG_REACH, MAX_HP, CAPTURE_PTS, INCOME,
   TEAM_NAMES, TEAM_COLORS, TYPES, UNIT_TYPES,
   idx, inGrid, mix, unitName, cellKey, newState, stateHash,
   stepTo, stepsFrom, moveOf, moveRange, moveUnit, canDig, digTool, dig, canAttack, attack, hasLadder, climbsLadders,
   canCapture, capture, canBuild, buildUnit, incomeOf, costOf, flies, typesFor, canPlace, place, placeCost,
+  canFeed, feed, setCling, holdAt, openSky, FEED_TURNS, digReach,
   beginAction, endAction, undo, redo, endTurn, gravityStep, waterStep, turnGroups, replayTurn, runGroup,
 } = BlockSim;
 
 /* =========================================================
    VIEW — Three.js. Reads the sim; walking is a visual that commits snapped cells.
    ========================================================= */
+// Side names: in a vampire match Blue is the Humans and Red the Vampires.
+const whose = n => n.endsWith('s') ? n + "'" : n + "'s";
+const teamName = t => S && S.mode === 'vampires' ? ['Humans', 'Vampires'][t] : TEAM_NAMES[t];
 const MAT_COLOR = { 1: 0x6aa84f, 2: 0x8b5a34, 3: 0x8e9198, 4: 0xb4864f, 5: 0x3a3a42, 6: 0x3f8f3b, 7: 0xf2c230, 8: 0xe9e1cf, 9: 0xa8432f };
 const PLACEABLE = [{ m: STONE, name: 'Stone' }, { m: DIRT, name: 'Dirt' }, { m: WOOD, name: 'Wood' }, { m: LEAVES, name: 'Leaves' }];
 
@@ -648,6 +684,7 @@ const FACES = [
 const CORNER_UV = [[0, 0], [1, 0], [1, 1], [0, 1]];
 // A roof block is drawn as a gable roof: two slopes with a little overhang, the ridge along x or z (fixed per cell),
 // whitewashed gable ends, and an underside only where it can be seen.
+const deadHut = (x, z) => !!S.villages && S.villages.some(v => !v.alive && v.huts.some(h => h[0] === x && h[1] === z));
 function roofFaces(x, y, z, i, shade, pos, nor, uv, col, ind) {
   const o = 0.12, top = 0.9, alongX = (mix(i * 13 + 5) & 1) === 0;
   // local a = along the ridge, b = across it
@@ -679,6 +716,7 @@ function rebuildChunk(k) {
     if (!m || hiddenCell(x, y, z)) continue;
     let shade = 0.9 + (mix(i * 31 + 7) % 11) / 100;                  // a little variation from block to block
     if (hiddenCell(x, y + 1, z)) shade *= 0.62;                        // the cut surface reads as a slice
+    if ((m === ROOF || m === WALL) && deadHut(x, z)) shade *= 0.42;     // a dead village's huts go dark
     if (m === ROOF) { roofFaces(x, y, z, i, shade, pos, nor, uv, col, ind); continue; }
     for (const [n, corners, face] of FACES) {
       if (!openCell(x + n[0], y + n[1], z + n[2])) continue;
@@ -1043,12 +1081,32 @@ const SCREW_SAIL = [
   ["................LLL.................", "..............LLLLLLL...............", ".............lLLLLLLLl..............", "............lLLLLLLLLLY.............", "............lLLLLLLLLYY.............", "...........lLLLLLLYYY...............", "...........lLLLYYYYkkkkk............", "..........lLYYYkkZZkkkkkk...........", "..........YYkkkkkZZkkkkkY...........", ".........YkkkkkkkZZkkkYYYl..........", ".........kkkkkkkkZZYYYYLLl..........", "...........kkkYYYYYLLLLLLl..........", "...........YYYLLLLLLLLLLLll.........", "........YYLLLLLLLLLLLLLLLll.........", "........lLLLLLLLLLLLLLLLLLl.........", ".......llLLLLLLLLLLLLLLLLLll........", ".......llLLLLLLLLLLLLLLLLLlY........", ".......llLLLLLLLLLLLLLLLYYY.........", ".......lLLLLLLLLLLLYYYYY............", "......llLLLLLLYYYYYkkkkkkkk.........", "......llLYYYYYkkkZZkkkkkkkkkk.......", "......YYYkkkkkkkkZZkkkkkkkkkY.......", "......kkkkkkkkkkkZZkkkkkYYYYl.......", ".....kkkkkkkkkkkkZZYYYYYYLLLll......", "........kkkkkYYYYYYLLLLLLLLLll......", "........YYYYYLLLLLLLLLLLLLLLll......", ".....YYYLLLLLLLLLLLLLLLLLLLLll......", "....YllLLLLLLLLLLLLLLLLLLLLLlll.....", "....llLLLLLLLLLLLLLLLLLLLLLLLll.....", "....llLLLLLLLLLLLLLLLLLLLLLLLlY.....", "....llLLLLLLLLLLLLLLLLLLLLYYYY......", "....llLLLLLLLLLLLLLLYYYYYY..........", "...lllLLLLLLLYYYYYYYkkkkkkkkkk......", "...lllLYYYYYYkkkkZZkkkkkkkkkkkkk....", "...YYYYkkkkkkkkkkZZkkkkkkkkkkkYY....", "...kkkkkkkkkkkkkkZZkkkkkkkYYYYYl....", "...kkkkkkkkkkkkkkZZYYYYYYYLLLLll....", "......kkkkkkYYYYYYYYLLLLLLLLLLlll...", "......YYYYYYLLLLLLLLLLLLLLLLLLlll...", "..YYYYLLLLLLLLLLLLLLLLLLLLLLLLlll...", "..llLLLLLLLLLLLLLLLLLLLLLLLLLLLll...", "..llLLLLLLLLLLLLLLLLLLLLLLLLLLLll...", ".lllLLLLLLLLLLLLLLLLLLLLLLLLLLLlYY.."],
   ["................LLL.................", "..............LLLLLLL...............", ".............lLLLLLLLY..............", "............lLLLLLLYY...............", "............lLLLLYYYkk..............", "...........lLLYYYZZkkkkk............", "...........YYkkkkZZkkkkk............", "..........YkkkkkkZZkkkkYY...........", "..........kkkkkkkZZkYYYLl...........", "..........kkkkkkYYYYLLLLll..........", "............YYYYLLLLLLLLLl..........", ".........YYYLLLLLLLLLLLLLl..........", "........YlLLLLLLLLLLLLLLLll.........", "........llLLLLLLLLLLLLLLLll.........", "........lLLLLLLLLLLLLLLLLLl.........", ".......llLLLLLLLLLLLLLLLLYY.........", ".......llLLLLLLLLLLLLYYYY...........", ".......llLLLLLLLYYYYYkkkkk..........", ".......lLLLYYYYYkZZkkkkkkkkk........", "......lYYYYkkkkkkZZkkkkkkkkkY.......", "......YkkkkkkkkkkZZkkkkkkkYYY.......", "......kkkkkkkkkkkZZkkYYYYYLll.......", ".......kkkkkkkkYYYYYYLLLLLLLl.......", "..........YYYYYYLLLLLLLLLLLLll......", "......YYYYLLLLLLLLLLLLLLLLLLll......", ".....YlLLLLLLLLLLLLLLLLLLLLLll......", ".....llLLLLLLLLLLLLLLLLLLLLLll......", "....lllLLLLLLLLLLLLLLLLLLLLLllY.....", "....llLLLLLLLLLLLLLLLLLLLLLYYY......", "....llLLLLLLLLLLLLLLLLYYYYYY........", "....llLLLLLLLLLYYYYYYYkkkkkk........", "....llLLLYYYYYYYkZZkkkkkkkkkkkk.....", "...llYYYYkkkkkkkkZZkkkkkkkkkkkkY....", "...YYkkkkkkkkkkkkZZkkkkkkkkkYYYl....", "...kkkkkkkkkkkkkkZZkkkYYYYYYLLll....", ".....kkkkkkkkkkYYYYYYYLLLLLLLLll....", "........YYYYYYYLLLLLLLLLLLLLLLll....", "....YYYYLLLLLLLLLLLLLLLLLLLLLLlll...", "..YYlLLLLLLLLLLLLLLLLLLLLLLLLLlll...", "..lllLLLLLLLLLLLLLLLLLLLLLLLLLlll...", "..llLLLLLLLLLLLLLLLLLLLLLLLLLLLll...", "..llLLLLLLLLLLLLLLLLLLLLLLLLLYYYY...", ".lllLLLLLLLLLLLLLLLLLLLYYYYYY......."]
 ];
+// The vampire army (rules 10). U/u = team cloth (always red), N hair, V/v pale skin, Q red eyes, F fangs, C/c cape and its
+// lining; the First wears a dark crown (J/j) with a red gem (G). Minions: small and hunched, grey-green skin (g), rags.
+const VAMP = [
+  "................", "....NNNNNN......", "...NNNNNNNN.....", "...NVVNNVVN.....", "...NVVVVVVN.....", "...NVQVVQVN.....",
+  "..c.VVVVVV.c....", "..cCVvvvvVCc....", "..cC.FvvF.Cc....", "..CCcUUUUcCC....", ".CCcUUUUUUcCC...", ".CcUUuUUuUUcC...",
+  ".CcVUuUUuUVcC...", ".Cc.UUUUUU.cC...", ".Cc.BBBBBB.cC...", ".Cc.PPPPPP.cC...", "CCc.PP..PP.cCC..", "CCc.PP..PP.cCC..",
+  "Cc..PP..PP..cC..", "Cc..PP..PP..cC..", "C...PP..PP...C..", "...KKK..KKK.....", "...KKK..KKK.....", "................"
+];
+const LORD = VAMP.map((r, y) => ({ 0: "...J..JJ..J.....", 1: "...JJJGGJJJ.....", 2: "...jjjjjjjj.....",
+  21: "Cc.KKK..KKK.cC..", 22: "CcCKKK..KKKCcC.." })[y] || r);
+const MINION = [
+  "................", "................", "................", "................", "................", "................",
+  "................", ".....NNNN.......", "....NggggN......", "....gQggQg......", "....gggggg......", ".....gFFg.......",
+  "...cCCCCCCc.....", "..gCCuCCuCCg....", "..g.CCCCCC.g....", "....CcCCcC......", "....C.CC.C......", "....gg..gg......",
+  "....gg..gg......", "...ggg..ggg.....", "................", "................", "................", "................"
+];
+const VAMP_ART = { vampire: VAMP, first: LORD, minion: MINION };
 const screwFrame = k => [...SCREW.slice(0, 6), ...SCREW_SAIL[k], ...SCREW.slice(49)];
 const HELMET = { screw: ['#6b4423', '#8a5a33'], soldier: ['#4b5320', '#6b7a35'], spearman: ['#6b4423', '#8a5a33'], knight: ['#9aa3ad', '#d5dbe1'],
-                 archer: ['#2f6b3a', '#4f8f5a'], builder: ['#e2b714', '#f5d652'] };
+                 archer: ['#2f6b3a', '#4f8f5a'], builder: ['#e2b714', '#f5d652'],
+                 first: ['#000', '#000'], vampire: ['#000', '#000'], minion: ['#000', '#000'] };
 const SPRITE_PAL = { S: '#f1c27d', s: '#d9a066', E: '#22303b', B: '#6b4423', P: '#3a3f2a', K: '#161616',
                      M: '#c9ced6', W: '#8a5a33', T: '#e8e1cf', R: '#9a6b43', r: '#6e4a2c', A: '#2b1d14',
-                     L: '#f2e8cc', l: '#d6c6a0', k: '#a8987a', Z: '#8a5a33', Y: '#6e4a2c' };
+                     L: '#f2e8cc', l: '#d6c6a0', k: '#a8987a', Z: '#8a5a33', Y: '#6e4a2c',
+                     N: '#1a1420', V: '#dfe3e8', v: '#9aa1ad', Q: '#e0182a', F: '#ffffff', C: '#2a1830', c: '#9b1b2e',
+                     J: '#3d3550', j: '#5c5275', G: '#ff6a3c', g: '#8a9a86' };
 const spriteCache = new Map();
 /* ---------- Animation frames, made from the base drawings ----------
    Frames: 'idle', 'blink', 'walk1' / 'walk3' (a leg lifted; walk0/2 = idle), 'atk1' (wind up), 'atk2' (strike).
@@ -1077,6 +1135,15 @@ function lift(rows, cols, y0, y1, n) {
 }
 function artFor(type, frame) {
   if (type === 'screw') return { rows: screwFrame(typeof frame === 'number' ? frame : 0), weapon: [] };
+  if (VAMP_ART[type]) {                              // vampires: legs step, eyes blink, and flare when they strike
+    let rows = VAMP_ART[type];
+    const [y0, y1] = type === 'minion' ? [17, 19] : [16, 22];
+    if (frame === 'walk1') rows = lift(rows, [3, 4, 5], y0, y1, 1);
+    if (frame === 'walk3') rows = lift(rows, [8, 9, 10], y0, y1, 1);
+    if (frame === 'blink') rows = rows.map(r => r.replace(/Q/g, type === 'minion' ? 'g' : 'V'));
+    if (frame === 'atk1' || frame === 'atk2') rows = rows.map(r => r.replace(/Q/g, 'G'));
+    return { rows, weapon: [] };
+  }
   if (type === 'knight') {
     if (frame === 'atk2') return { rows: KNIGHT_DIP, weapon: [] };
     if (frame === 'walk1') return { rows: lift(KNIGHT, [7, 8, 17, 18], 29, 38, 2), weapon: [] };   // gallop: two legs up
@@ -1108,6 +1175,26 @@ function unitTexture(type, team, frame = 0) {
   return t;
 }
 // Start an attack or dig animation for unit k, toward the point (tx, tz).
+const bolts = [];
+function shoot(k, tx, ty, tz) {
+  const u = S.units[k];
+  if (!u || reduceMotion || !UNIT_TYPES[u.type].ranged) return;
+  const vamp = UNIT_TYPES[u.type].vamp;
+  const m = new THREE.Mesh(vamp ? new THREE.SphereGeometry(0.13, 8, 6) : new THREE.BoxGeometry(0.05, 0.05, 0.5),
+    new THREE.MeshBasicMaterial({ color: vamp ? 0xff2a3c : 0x5a3a22 }));
+  const from = new THREE.Vector3(u.x + 0.5, u.y + 0.7, u.z + 0.5), to = new THREE.Vector3(tx, ty + 0.6, tz);
+  m.position.copy(from); m.lookAt(to);
+  scene.add(m);
+  bolts.push({ m, from, to, t0: performance.now(), len: 120 + from.distanceTo(to) * 25 });
+}
+function updateBolts(now) {
+  for (let k = bolts.length - 1; k >= 0; k--) {
+    const b = bolts[k], t = (now - b.t0) / b.len;
+    if (t >= 1) { scene.remove(b.m); b.m.geometry.dispose(); bolts.splice(k, 1); continue; }
+    b.m.position.lerpVectors(b.from, b.to, t);
+    b.m.position.y += Math.sin(Math.PI * t) * 0.6;          // a little arc
+  }
+}
 function playAnim(k, kind, tx, tz) {
   const g = unitGroups[k], u = S.units[k];
   if (!g || !u || reduceMotion) return;
@@ -1117,7 +1204,7 @@ function playAnim(k, kind, tx, tz) {
 // Animate the actions of a group run by the bot or replayed from an online turn.
 function animActs(acts) {
   for (const a of acts || []) {
-    if (a.t === 'attack' && S.units[a.v]) playAnim(a.u, 'attack', S.units[a.v].x + 0.5, S.units[a.v].z + 0.5);
+    if (a.t === 'attack' && S.units[a.v]) { const v = S.units[a.v]; playAnim(a.u, 'attack', v.x + 0.5, v.z + 0.5); shoot(a.u, v.x + 0.5, v.y, v.z + 0.5); }
     if (a.t === 'dig') playAnim(a.u, 'dig', a.x + 0.5, a.z + 0.5);
   }
 }
@@ -1206,11 +1293,15 @@ syncUnitGroups();
 let dnSeen = { s: null, night: false };
 function dayNightHud() {
   const L = (BlockSim.RULES[S.rules || 1] || {}).dayLength;
-  $('dnWrap').hidden = !L;
+  $('dnBar').hidden = !L;
   if (!L) return;
   const night = nightAt(S), n = roundsLeft(S);
-  $('daynight').textContent = (night ? '🌙 Night' : '☀️ Day') + ' · ' +
-    (n === 1 ? (night ? 'dawn next round' : 'dusk next round') : n + ' rounds to ' + (night ? 'dawn' : 'dusk'));
+  const segs = $('dnSegs'), now = L - n;
+  if (segs.children.length !== L) segs.innerHTML = '<i></i>'.repeat(L);
+  [...segs.children].forEach((e, k) => { e.className = k === now ? 'now' : k < now ? 'past' : ''; });
+  $('dnBar').classList.toggle('night', night);
+  $('dnIcon').textContent = night ? '🌙' : '☀️';
+  $('dnLeft').textContent = n === 1 ? (night ? 'dawn next round' : 'dusk next round') : n + ' to ' + (night ? 'dawn' : 'dusk');
   if (dnSeen.s === S && dnSeen.night !== night && !lobbyOpen) flash(night ? '🌙 Night falls' : '☀️ The sun rises');
   dnSeen = { s: S, night };
 }
@@ -1284,8 +1375,94 @@ function updateVillagers(now, dt) {
     if (p.mesh.material.map !== map) p.mesh.material.map = map;
     p.mesh.position.set(p.pos.x, p.pos.y + 0.5, p.pos.z);
     p.mesh.rotation.y = Math.atan2(camera.position.x - p.pos.x, camera.position.z - p.pos.z);
-    p.mesh.visible = out && !hiddenCell(Math.floor(p.pos.x), Math.floor(p.pos.y + 1e-4), Math.floor(p.pos.z)) && !inDark(p.mesh.position);
+    p.mesh.visible = out && p.v.alive !== false && !hiddenCell(Math.floor(p.pos.x), Math.floor(p.pos.y + 1e-4), Math.floor(p.pos.z)) && !inDark(p.mesh.position);
   }
+}
+/* ---------- Vampire matches: village markers, the alert arrow, openings, messages ---------- */
+function textSprite(text, bg) {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 56;
+  const x = c.getContext('2d');
+  x.fillStyle = bg; x.beginPath(); x.roundRect ? x.roundRect(4, 4, 120, 48, 14) : x.rect(4, 4, 120, 48); x.fill();
+  x.fillStyle = '#fff'; x.font = 'bold 30px system-ui, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText(text, 64, 30);
+  const t = new THREE.CanvasTexture(c);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false }));
+  sp.scale.set(1.6, 0.7, 1); sp.renderOrder = 5;
+  return sp;
+}
+const vLabels = [];
+let vSig = '', vSeen = { s: null, v: [] }, floodSeen = 0;
+const beams = [];
+const humansView = () => S.mode === 'vampires' && (viewTeam() === 0 || !NET.id && !botGame);
+function updateVampireView() {
+  const vamp = S.mode === 'vampires';
+  // markers over villages: the feeding count, or a skull once dead
+  (S.villages || []).forEach((v, k) => {
+    const text = !vamp ? '' : !v.alive ? '☠' : v.feedBy >= 0 ? '🩸 ' + v.feed + '/' + FEED_TURNS : '';
+    let l = vLabels[k];
+    if (!l || l.text !== text) {
+      if (l) scene.remove(l.sp);
+      l = vLabels[k] = { text, sp: text ? textSprite(text, text === '☠' ? '#3a3f48' : '#b3122b') : null };
+      if (l.sp) scene.add(l.sp);
+    }
+    if (l.sp) { l.sp.position.set(v.x + 0.5, v.y + 3.2, v.z + 0.5); l.sp.visible = !lobbyOpen && !inDark(l.sp.position); }
+  });
+  for (let k = (S.villages || []).length; k < vLabels.length; k++) if (vLabels[k] && vLabels[k].sp) { scene.remove(vLabels[k].sp); vLabels[k] = null; }
+  // dead villages darken: redraw their chunks when one dies (or comes back with undo)
+  const sig = (S.villages || []).map(v => v.alive ? 1 : 0).join('');
+  if (sig !== vSig) {
+    vSig = sig;
+    const dirty = new Set();
+    for (const v of S.villages || []) for (const [x, z] of v.huts) dirty.add(((z / CH) | 0) * NCX + ((x / CH) | 0));
+    for (const k of dirty) rebuildChunk(k);
+  }
+  // beams for the vampires: white over each live village, blue over the humans' base, sky to bedrock, seen through ground
+  const vampEyes = vamp && !lobbyOpen && viewTeam() === 1;
+  const spots = !vampEyes ? [] : [
+    ...(S.villages || []).filter(v => v.alive).map(v => [v.x, v.z, 0xffffff]),
+    ...S.buildings.filter(b => b.kind === 'base' && b.owner === 0).map(b => [b.x, b.z, 0x4aa3ff])];
+  while (beams.length < spots.length) {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, H + 20, 10, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.38, depthTest: false, depthWrite: false, fog: false }));
+    m.renderOrder = 4; scene.add(m); beams.push(m);
+  }
+  beams.forEach((m, k) => {
+    m.visible = k < spots.length;
+    if (!m.visible) return;
+    const [x, z, c] = spots[k];
+    m.position.set(x + 0.5, (H + 20) / 2, z + 0.5);
+    m.material.color.setHex(c);
+  });
+  // the arrow: points at a village being fed, when it's off screen (humans' view)
+  const fed = vamp && humansView() && !lobbyOpen ? (S.villages || []).find(v => v.alive && v.feedBy >= 0) : null;
+  const arrow = $('vArrow');
+  if (!fed) { if (!arrow.hidden) arrow.hidden = true; return; }
+  const p = tmpV.set(fed.x + 0.5, fed.y + 1, fed.z + 0.5).project(camera);
+  const behind = p.z > 1, onScreen = !behind && Math.abs(p.x) < 0.9 && Math.abs(p.y) < 0.9;
+  if (onScreen) { arrow.hidden = true; return; }
+  let dx = behind ? -p.x : p.x, dy = behind ? -p.y : p.y;
+  if (!dx && !dy) dy = -1;
+  const k = 0.85 / Math.max(Math.abs(dx), Math.abs(dy));
+  const sx = (dx * k + 1) / 2 * innerWidth, sy = (1 - dy * k) / 2 * innerHeight;
+  arrow.style.left = sx + 'px'; arrow.style.top = sy + 'px';
+  arrow.style.transform = 'rotate(' + Math.atan2(-dy, dx) + 'rad)';
+  arrow.hidden = false;
+}
+// Messages when vampires start feeding, a village falls, or a flood drowns vampires.
+function vampireHud() {
+  if (S.mode !== 'vampires') return;
+  const now = (S.villages || []).map(v => [v.alive, v.feedBy]);
+  if (vSeen.s === S) {
+    now.forEach(([alive, by], k) => {
+      const [wasAlive, wasBy] = vSeen.v[k] || [];
+      if (wasAlive && !alive) flash('☠ A village has fallen to the vampires');
+      else if (alive && by >= 0 && wasBy < 0 && humansView()) flash('🩸 Vampires are feeding on a village!');
+    });
+  }
+  vSeen = { s: S, v: now };
+  const fl = (S.flooded || []).length;
+  if (fl > floodSeen) flash('🌊 ' + (fl - floodSeen) + ' vampire' + (fl - floodSeen > 1 ? 's' : '') + ' drowned');
+  floodSeen = fl;
 }
 // Red rings under enemies the selected unit can attack (Attack mode).
 const atkRings = [];
@@ -1357,12 +1534,25 @@ function updateButtons() {
   const u = selUnit(), own = !!u && !u.dead && u.team === S.team && u.team === viewTeam() && myTurn();
   const planned = own && !u.moved && pending && (pending[0] !== u.x || pending[1] !== u.y || pending[2] !== u.z);
   const show = (act, on) => { const b = document.querySelector('[data-act="' + act + '"]'); if (b && b.hidden === !!on) b.hidden = !on; };
-  show('up', own && flies(S, u) && !u.moved);
-  show('down', own && flies(S, u) && !u.moved);
+  const vampClimb = own && UNIT_TYPES[u.type].vamp && !u.moved && u.cling;
+  show('up', own && (flies(S, u) && !u.moved || vampClimb && !!climbTarget(u, 'up')));
+  show('down', own && (flies(S, u) && !u.moved || vampClimb && !!climbTarget(u, 'down')));
   show('attack', own && (attackMode || attackTargets().length > 0));
   show('dig', own && digTool(S, u) !== 'none');
   show('place', own && u.type === 'builder' && placeCost(S, 'stone') !== undefined);
   show('capture', own && !!captureTarget());
+  show('feed', own && !!feedTarget());
+  show('cling', own && !!UNIT_TYPES[u.type].vamp);
+  show('digup', own && digUpCells(u).length > 0);
+  const cl = document.querySelector('[data-act="cling"]');
+  if (own && UNIT_TYPES[u.type].vamp) {
+    const t = u.cling ? 'Climbing ✓' : 'Climb walls';
+    if (cl.textContent !== t) { cl.textContent = t; cl.setAttribute('aria-pressed', String(!!u.cling)); }
+  }
+  const v = own && feedTarget(), fb = document.querySelector('[data-act="feed"]');
+  if (v) { const t = 'Feed ' + (v.feedBy === u.id ? v.feed : 0) + '/' + FEED_TURNS; if (fb.textContent !== t) fb.textContent = t; }
+  const hasBase = S.buildings.some(b => b.kind === 'base' && b.owner === viewTeam());
+  if ($('buildBtn').hidden === hasBase) $('buildBtn').hidden = !hasBase;
   show('confirm', planned);
   show('redo', S.cursor < S.history.length);
 }
@@ -1674,11 +1864,11 @@ function joyStep(dt) {
   const push = Math.min(1, Math.hypot(joy.x, joy.y));
   const fx = -Math.sin(yaw), fz = -Math.cos(yaw);    // "up" on the stick = away from the camera
   const u = selUnit(), [cx, cy, cz] = pending;
-  if (!flies(S, u) && climbsLadders(u) && hasLadder(S, cx, cy, cz) && Math.abs(joy.y) > Math.abs(joy.x)) {
+  if (!flies(S, u) && !UNIT_TYPES[u.type].vamp && holdAt(S, u, cx, cy, cz) && Math.abs(joy.y) > Math.abs(joy.x)) {
     // On a ladder the stick's up/down climbs. At the top, up steps out onto the ground on the side you face.
     let target = null;
     if (joy.y > 0) {
-      if (hasLadder(S, cx, cy + 1, cz) && range.has(cellKey(cx, cy + 1, cz))) target = [cx, cy + 1, cz];
+      if (holdAt(S, u, cx, cy + 1, cz) && range.has(cellKey(cx, cy + 1, cz))) target = [cx, cy + 1, cz];
       else {
         let best = -Infinity;
         for (const c of stepsFrom(S, u, cx, cy, cz)) {
@@ -1696,8 +1886,9 @@ function joyStep(dt) {
       const dx = tx - p.x, dy = ty - p.y, dz = tz - p.z, dist = Math.hypot(dx, dy, dz), step = SPEED * 0.7 * push * dt;
       if (dist <= step) { p.set(tx, ty, tz); pending = target.slice(); }
       else { p.x += dx / dist * step; p.y += dy / dist * step; p.z += dz / dist * step; }
+      return;
     }
-    return;
+    if (hasLadder(S, cx, cy, cz) && !UNIT_TYPES[u.type].vamp) return;   // on a real ladder with nowhere to go: stay
   }
   const vx = -fz * joy.x + fx * joy.y, vz = fx * joy.x + fz * joy.y, len = Math.hypot(vx, vz) || 1;
   const step = SPEED * push * dt;
@@ -1772,7 +1963,7 @@ function tryAttack(cx, cy) {
   }
   const b = S.units[k];
   const hit = attack(S, u, b);
-  if (hit) playAnim(sel, 'attack', b.x + 0.5, b.z + 0.5);
+  if (hit) { playAnim(sel, 'attack', b.x + 0.5, b.z + 0.5); shoot(sel, b.x + 0.5, b.y, b.z + 0.5); }
   if (hit) countAct('attack');
   endAction(S);
   if (!hit) { refreshHud(); return; }
@@ -1852,7 +2043,8 @@ function tryDig(cx, cy) {
   // Digging happens from the unit's real cell, so an unconfirmed move is confirmed first.
   // If that planned move is no longer valid (the world changed under it), drop it and dig from where the unit is.
   beginAction(S);                               // move + dig + collapse + flood = one undoable action
-  if (!u.moved && (pending[0] !== u.x || pending[1] !== u.y || pending[2] !== u.z)) {
+  const vamp = !!UNIT_TYPES[u.type].vamp;        // vampires dig from where they stand: the planned move stays open
+  if (!vamp && !u.moved && (pending[0] !== u.x || pending[1] !== u.y || pending[2] !== u.z)) {
     if (!moveUnit(S, u, ...pending)) { pending = [u.x, u.y, u.z]; flash('Planned move cancelled'); }
   }
   if (!canDig(S, u, ...c)) {
@@ -1869,6 +2061,12 @@ function tryDig(cx, cy) {
   if (S.gold[S.team] > before) flash('+' + (S.gold[S.team] - before) + ' gold');
   rebuildChanged();
   settle();
+  if (vamp) keepPlan(u);
+}
+// After a vampire digs, its planned move stays if it can still get there; otherwise the plan resets to where it is.
+function keepPlan(u) {
+  if (!u.moved && !moveRange(S, u, moveOf(u)).has(cellKey(...pending))) { pending = [u.x, u.y, u.z]; resetWalker(); }
+  showRange();
 }
 let flashTimer = 0;
 function flash(msg) {
@@ -2021,6 +2219,36 @@ function renderBuildPanel() {
     panel.appendChild(b);
   }
 }
+// A climbing vampire's next cell up or down its wall from the planned spot (up at the top of a wall steps out onto
+// the ground, toward the way it faces), if it's within this turn's moves.
+function climbTarget(u, dir) {
+  if (!u.cling || !pending) return null;
+  const [cx, cy, cz] = pending, steps = stepsFrom(S, u, cx, cy, cz).filter(c => range.has(cellKey(...c)));
+  if (dir === 'down') return steps.find(c => c[0] === cx && c[2] === cz && c[1] < cy) || null;
+  const up = steps.find(c => c[0] === cx && c[2] === cz && c[1] === cy + 1);
+  if (up) return up;
+  const fx = Math.sin(walker.face), fz = Math.cos(walker.face);
+  let best = null, bd = -Infinity;
+  for (const c of steps) {
+    if (c[1] !== cy + 1 || (c[0] === cx && c[2] === cz)) continue;
+    const d = (c[0] - cx) * fx + (c[2] - cz) * fz;
+    if (d > bd) { bd = d; best = c; }
+  }
+  return best;
+}
+// Dig up (vampires): the blocks straight over its head that it can dig, within reach.
+function digUpCells(u) {
+  if (!UNIT_TYPES[u.type].vamp) return [];
+  const out = [];
+  for (let y = u.y + 1; y <= u.y + digReach(u) && y < H; y++) if (S.g[idx(u.x, y, u.z)] && canDig(S, u, u.x, y, u.z)) out.push(y);
+  return out;
+}
+// Feed (vampires) from where the unit is, or where it will be once its planned move is confirmed.
+function feedTarget() {
+  const u = selUnit();
+  if (!pending || !UNIT_TYPES[u.type].feeds) return null;
+  return canFeed(S, u.moved ? u : { ...u, x: pending[0], y: pending[1], z: pending[2] });
+}
 // Capture from where the unit is, or where it will be once its planned move is confirmed.
 function captureTarget() {
   const u = selUnit();
@@ -2039,7 +2267,7 @@ function refreshHud() {
     : u.acted ? 'Done this turn' : u.moved ? 'Moved · can still attack' : 'Ready · tap a blue tile';
   $('pos').textContent = `x${u.x} y${u.y} z${u.z}`;
   dayNightHud();
-  $('turn').textContent = S.turn + ' · ' + (NET.id && NET.team >= 0 ? (S.team === NET.team ? 'Your move' : oppName() + "'s move") : TEAM_NAMES[S.team] + "'s move");
+  $('turn').textContent = S.turn + ' · ' + (NET.id && NET.team >= 0 ? (S.team === NET.team ? 'Your move' : oppName() + "'s move") : whose(teamName(S.team)) + " move");
   $('uname').textContent = unitName(u) + ' · ' + u.hp + ' HP';
   $('invwood').textContent = S.inv[WOOD];
   syncLoot();
@@ -2058,8 +2286,10 @@ function refreshHud() {
   document.querySelector('[data-act="capture"]').disabled = falling || !captureTarget() || !mine;
   document.querySelector('[data-act="dig"]').disabled = falling || !mine || digTool(S, u) === 'none';
   syncLadders();
-  $('gold').textContent = S.gold[S.team];
-  $('income').textContent = '(+' + incomeOf(S, S.team) + '/turn)';
+  const vampSide = S.mode === 'vampires' && S.team === 1;
+  $('gold').textContent = vampSide ? '—' : S.gold[S.team];
+  $('income').textContent = vampSide ? '' : '(+' + incomeOf(S, S.team) + '/turn)';
+  vampireHud();
   $('buildBtn').disabled = falling || !mine || !TYPES.some(t => canBuild(S, t));
   if (!$('buildPanel').hidden) renderBuildPanel();
   const won = winnerNow();
@@ -2072,9 +2302,9 @@ function refreshHud() {
   }
   if (won >= 0 && NET.desync < 0) {
     $('winText').textContent = NET.id && NET.team >= 0 ? (won === NET.team ? 'You win!' : 'You lose')
-      : botGame ? (won === BOT ? 'The bot wins!' : 'You win!') : TEAM_NAMES[won] + ' wins!';
-    $('winSub').textContent = NET.quit < 0 ? 'The enemy base has been captured.'
-      : NET.quit === NET.team ? 'You quit the game.' : (NET.names[NET.quit] || TEAM_NAMES[NET.quit]) + ' quit the game.';
+      : botGame ? (won === BOT ? 'The bot wins!' : 'You win!') : teamName(won) + ' wins!';
+    $('winSub').textContent = NET.quit < 0 ? (S.mode === 'vampires' ? (won === 0 ? 'The First Vampire is dead, and every vampire with it.' : 'Every village has fallen to the vampires.') : 'The enemy base has been captured.')
+      : NET.quit === NET.team ? 'You quit the game.' : (NET.names[NET.quit] || teamName(NET.quit)) + ' quit the game.';
   }
   if (botGame) $('winUndo').hidden = won === BOT;   // you can't undo the bot's winning move
   if (NET.id) {                                  // online: a win still has to be sent; after that, no undo
@@ -2140,7 +2370,7 @@ function ballBlocked(x, y, z, r) {
 }
 
 /* ---------- Actions ---------- */
-const PLAY_ACTS = new Set(['confirm', 'capture', 'undo', 'redo', 'endturn', 'dig', 'attack', 'up', 'down', 'place']);
+const PLAY_ACTS = new Set(['confirm', 'capture', 'undo', 'redo', 'endturn', 'dig', 'attack', 'up', 'down', 'place', 'feed', 'cling', 'digup']);
 function act(a) {
   const u = selUnit();
   if (PLAY_ACTS.has(a) && !myTurn()) { flash(NET.sending ? 'Sending your turn…' : 'Not your turn'); refreshHud(); return; }
@@ -2167,6 +2397,36 @@ function act(a) {
     }
     if (k >= 0) selectUnit(k);
     else flash(u.moved ? 'All units have moved' : 'No other unit is ready');
+  } else if (a === 'feed') {
+    if (falling) return;
+    const v = feedTarget();
+    if (!v) { flash('Stand on a live village square to feed'); refreshHud(); return; }
+    beginAction(S);
+    if (!u.moved && (pending[0] !== u.x || pending[1] !== u.y || pending[2] !== u.z)) moveUnit(S, u, ...pending);
+    const ok = feed(S, u);
+    if (ok) countAct('feed');
+    endAction(S);
+    syncUnitGroups(); resetWalker(); showRange();
+    if (ok) flash(v.alive ? 'Feeding… ' + v.feed + '/' + FEED_TURNS : 'The village is dead. A minion is born!');
+    refreshHud();
+  } else if (a === 'digup') {                    // vampires: dig straight up (up to 10, no move needed) and start climbing
+    if (falling) return;
+    beginAction(S);
+    let n = 0;
+    for (const y of digUpCells(u)) if (dig(S, u, u.x, y, u.z)) n++;
+    if (n) { countAct('dig'); playAnim(sel, 'dig', u.x + 0.5, u.z + 0.5); }
+    if (n && !u.cling) setCling(S, u, true);
+    flash(n ? 'Dug ' + n + ' up · climb the shaft' : 'Nothing to dig above');
+    rebuildChanged();
+    settle();
+    keepPlan(u);
+  } else if (a === 'cling') {
+    if (falling) return;
+    beginAction(S);
+    const ok = setCling(S, u, !u.cling);
+    endAction(S);
+    if (ok) flash(u.cling ? 'Climbing walls: you can go up and down any wall' : 'Walking normally');
+    keepPlan(u); refreshHud();
   } else if (a === 'capture') {
     if (falling) return;
     const target = captureTarget();
@@ -2207,6 +2467,13 @@ function act(a) {
     const b = document.querySelector('[data-act="view"]');
     b.textContent = fps ? '3rd person' : '1st person';
     b.setAttribute('aria-pressed', String(fps));
+  } else if ((a === 'up' || a === 'down') && UNIT_TYPES[u.type].vamp) {   // a vampire climbs its wall one block
+    if (u.moved || falling) return;
+    if (walker.path.length > 1) { pending = walker.path[walker.seg].cell.slice(); walker.path = []; }
+    const t = climbTarget(u, a);
+    if (!t) { flash(a === 'up' ? "Can't climb higher here" : "Can't climb lower here"); return; }
+    pending = t; walker.p.set(t[0] + 0.5, t[1], t[2] + 0.5);
+    showRange();
   } else if (a === 'up' || a === 'down') {         // the Aerial Screw changes its planned height (1 move per block)
     if (!flies(S, u) || u.moved || falling) return;
     if (walker.path.length > 1) { pending = walker.path[walker.seg].cell.slice(); walker.path = []; }
@@ -2235,7 +2502,7 @@ function act(a) {
 // After End turn (yours or the opponent's): select the side to move and say what happened.
 // Whose units the screen follows: online, always your own; in pass & play, whoever is to move.
 const viewTeam = () => NET.id && NET.team >= 0 ? NET.team : botGame ? 0 : S.team;
-const oppName = () => NET.id && NET.team >= 0 ? NET.names[1 - NET.team] || TEAM_NAMES[1 - NET.team] : TEAM_NAMES[S.team];
+const oppName = () => NET.id && NET.team >= 0 ? NET.names[1 - NET.team] || teamName(1 - NET.team) : teamName(S.team);
 function turnStarted(quiet) {
   setMode(null);
   const vt = viewTeam();
@@ -2244,9 +2511,10 @@ function turnStarted(quiet) {
     const first = S.units.findIndex(v => v.team === vt && !v.dead);
     if (first >= 0 && first !== sel) selectUnit(first); else { resetWalker(); showRange(); }
   }
-  const hurt = (S.drowned || []).map(id => unitName(S.units[id]) + (S.units[id].dead ? ' drowned' : ' is drowning'));
+  const hurt = (S.drowned || []).map(id => unitName(S.units[id]) + (S.units[id].dead ? ' drowned' : ' is drowning'))
+    .concat((S.burned || []).map(id => unitName(S.units[id]) + ' burned in the sun'));
   if (!quiet) flash(hurt.length ? hurt.join(', ') : botGame ? (S.team === BOT ? 'The bot is moving…' : 'Your turn')
-    : !NET.id ? TEAM_NAMES[S.team] + "'s turn" : S.team === NET.team ? 'Your turn' : 'Waiting for ' + oppName());
+    : !NET.id ? whose(teamName(S.team)) + " turn" : S.team === NET.team ? 'Your turn' : 'Waiting for ' + oppName());
 }
 /* ---------- Bot ("Play vs bot"): Red. It cheats: no economy, units simply appear at its base ----------
    Every WAVE_EVERY turns a wave worth WAVE_K × sqrt(turn) gold appears and marches on your base. Waves "buy" the
@@ -2346,8 +2614,89 @@ function waveTypes(budget) {
   }
   return out;
 }
+/* ---------- The vampire bot (a "vampires" match vs bot): plays fair, no cheating needed ----------
+   Night: every vampire heads for the nearest live village nobody else is feeding on, feeds on it, and shoots humans
+   it can reach on the way; minions hunt the nearest human (a kill makes them a vampire). The First feeds only while
+   it's the only vampire, otherwise it stays hidden. On the last night round, and by day, anyone under open sky hides:
+   a covered cell in reach, or dig down two and sideways one. Everyone climbs walls (and digs up out of a sealed cave). */
+const covered = (x, y, z) => !openSky(S, x, y, z);
+async function vampHide(u) {
+  if (covered(u.x, u.y, u.z)) return;
+  if (!u.moved) {                                     // a covered spot within reach (under trees, in a tunnel)
+    let best = null, bd = Infinity;
+    for (const [x, y, z] of cellsOf(u)) if (covered(x, y, z)) { const d = md(u, x, z) + Math.abs(y - u.y); if (d < bd) { bd = d; best = [x, y, z]; } }
+    if (best) { await botStep(moveAct(u, best)); return; }
+  }
+  for (let k = 0; k < 2; k++) {                       // dig in: down two…
+    const v = S.units[u.id];
+    if (!canDig(S, v, v.x, v.y - 1, v.z) || !(await botStep([{ t: 'dig', u: v.id, x: v.x, y: v.y - 1, z: v.z }]))) break;
+  }
+  const v = S.units[u.id];
+  if (covered(v.x, v.y, v.z) || v.moved) return;
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {   // …and one sideways, under the ground
+    const x = v.x + dx, z = v.z + dz;
+    if (!inGrid(x, v.y, z) || !covered(x, v.y, z) && !solidAt(x, v.y + 1, z)) continue;
+    if (S.g[idx(x, v.y, z)] && !(canDig(S, v, x, v.y, z) && await botStep([{ t: 'dig', u: v.id, x, y: v.y, z }]))) continue;
+    if (await botStep([{ t: 'move', u: v.id, x, y: S.units[u.id].y, z }])) return;
+  }
+}
+const solidAt = (x, y, z) => inGrid(x, y, z) && S.g[idx(x, y, z)] !== AIR;
+async function vampNight(u) {
+  const vampsLeft = S.units.filter(v => !v.dead && v.team === BOT && v.type === 'vampire').length;
+  if (u.type === 'first' && vampsLeft > 0) return vampHide(u);
+  // Feed only if the village can be finished before the last night round (that one is for hiding).
+  const time = v => roundsLeft(S) - 1 >= FEED_TURNS - (v.feedBy === u.id ? v.feed : 0);
+  const here = canFeed(S, u);
+  if (here && time(here)) { await botStep([{ t: 'feed', u: u.id }]); return; }
+  // Shut in (a sealed cave): dig straight up, then climb.
+  if (!cellsOf(u).some(([x, y, z]) => !covered(x, y, z))) {
+    for (let y = u.y + 1; y <= u.y + 3; y++) if (S.g[idx(u.x, y, u.z)] && canDig(S, u, u.x, y, u.z)) await botStep([{ t: 'dig', u: u.id, x: u.x, y, z: u.z }]);
+  }
+  const me = S.units[u.id];
+  if (UNIT_TYPES[me.type].feeds) {
+    const v = S.villages.filter(v => v.alive && (v.feedBy < 0 || v.feedBy === me.id)).sort((a, b) => md(me, a.x, a.z) - md(me, b.x, b.z))[0];
+    if (v) {
+      const cells = cellsOf(me), sq = cells.find(([x, y, z]) => x === v.x && z === v.z && y >= v.y);
+      if (sq && time(v)) { await botStep([...moveAct(me, sq), { t: 'feed', u: me.id }]); return; }
+      let best = null, bd = md(me, v.x, v.z);
+      for (const c of cells) { const d = Math.abs(c[0] - v.x) + Math.abs(c[2] - v.z); if (d < bd) { bd = d; best = c; } }
+      const acts = moveAct(me, best);
+      const there = best ? { ...me, x: best[0], y: best[1], z: best[2] } : me;
+      const prey = enemies().filter(e => canAttack(S, there, e)).sort((a, b) => a.hp - b.hp)[0];
+      if (prey) acts.push({ t: 'attack', u: me.id, v: prey.id });
+      if (acts.length) await botStep(acts);
+      return;
+    }
+  }
+  // Minions (and vampires with no village left): hunt the nearest human.
+  const prey = enemies().filter(e => botAttackFrom(me, e)).sort((a, b) => a.hp - b.hp)[0];
+  if (prey) { await botStep([...moveAct(me, botAttackFrom(me, prey)), { t: 'attack', u: me.id, v: prey.id }]); return; }
+  const near = enemies().sort((a, b) => md(me, a.x, a.z) - md(me, b.x, b.z))[0];
+  if (near) await botStep(moveAct(me, botCellToward(me, near.x, near.z)));
+}
+async function vampBotTurn() {
+  const night = nightAt(S), last = night && roundsLeft(S) === 1;
+  for (const u0 of S.units.filter(v => !v.dead && v.team === BOT)) {
+    if (S.winner >= 0) break;
+    const u = S.units[u0.id];
+    if (u.dead) continue;
+    if (!u.cling) await botStep([{ t: 'cling', u: u.id, on: true }]);
+    if (S.units[u.id].dead) continue;
+    if (!night || last) await vampHide(S.units[u.id]);
+    else await vampNight(S.units[u.id]);
+  }
+}
 async function botTurn() {
   botBusy = true; refreshHud();
+  if (S.mode === 'vampires') {
+    await vampBotTurn();
+    botBusy = false;
+    if (S.winner >= 0) { refreshHud(); return; }
+    endTurn(S); turnStarted();
+    if (S.wnext.length) settle();
+    refreshHud();
+    return;
+  }
   const mine = () => S.units.filter(v => !v.dead && v.team === BOT);
   for (const u of mine()) {                           // everyone acts: defend the base first, waves march, guards hold
     if (S.winner >= 0) break;
@@ -2458,7 +2807,9 @@ const TUT = [
     done: () => selUnit().type === 'builder' },
   { text: 'Tap Dig, then tap the block under your builder. Gold sits 3 to 7 blocks down.', pulse: '[data-act="dig"]', done: () => tut.saw.dig },
   { text: "Tap End turn. Then it's the bot's move.", pulse: '[data-act="endturn"]', done: () => S.team === BOT || S.turn > 1 },
-  { text: 'Win by capturing the enemy base (the red flag): stand a soldier on it and tap Capture. Watch out for the bot\'s waves!', ok: true },
+  { text: () => S.mode === 'vampires'
+      ? 'Win by killing the First Vampire (the one with the crown). Vampires hide underground by day and feed on villages at night: guard the villages, and flood their tunnels!'
+      : 'Win by capturing the enemy base (the red flag): stand a soldier on it and tap Capture. Watch out for the bot\'s waves!', ok: true },
 ];
 const tut = { on: false, step: 0, saw: {} };
 function tutSaw(kind) { if (tut.on) tut.saw[kind] = true; }
@@ -2472,7 +2823,7 @@ function tutShow(n) {
   if (n >= TUT.length) return tutEnd('done');
   tut.step = n;
   const st = TUT[n];
-  $('tutText').textContent = st.text;
+  $('tutText').textContent = typeof st.text === 'function' ? st.text() : st.text;
   $('tutStep').textContent = (n + 1) + ' / ' + TUT.length;
   $('tutOk').hidden = !st.ok;
   $('tut').hidden = false;
@@ -2625,9 +2976,9 @@ async function quickPlay() {
     setSearching(true);
   } catch (e) { flash(e.message); }
 }
-async function playFriend() {
+async function playFriend(mode) {
   try {
-    const m = await api('POST', '/matches');
+    const m = await api('POST', '/matches', { mode });
     location.href = HOME + '?m=' + m.id;
   } catch (e) { flash("Couldn't start a match: " + e.message); }
 }
@@ -2661,12 +3012,12 @@ function loadGoogle() {
 function netLine() {
   if (!NET.id) return;
   const opp = NET.team >= 0 ? NET.names[1 - NET.team] : null;
-  const you = NET.team >= 0 ? 'You are ' + TEAM_NAMES[NET.team] + (opp ? ' vs ' + opp : '') + ' · ' : 'Watching · ';
+  const you = NET.team >= 0 ? 'You are ' + teamName(NET.team) + (opp ? ' vs ' + opp : '') + ' · ' : 'Watching · ';
   const waitingForJoin = NET.team === 0 && !NET.players[1];
-  $('netLine').textContent = winnerNow() >= 0 ? you + TEAM_NAMES[winnerNow()] + ' won'
+  $('netLine').textContent = winnerNow() >= 0 ? you + teamName(winnerNow()) + ' won'
     : NET.sending ? you + 'Sending…'
     : myTurn() ? you + 'Your turn' + (waitingForJoin ? ' · no opponent yet' : '')
-    : you + 'Waiting for ' + (NET.team >= 0 && opp ? opp : TEAM_NAMES[S.team]) + '…';
+    : you + 'Waiting for ' + (NET.team >= 0 && opp ? opp : teamName(S.team)) + '…';
   $('shareBtn').hidden = !waitingForJoin;
 }
 function showShare() {
@@ -2766,7 +3117,8 @@ async function openMatch(id) {
       m = await api('GET', path + '?since=0');
     }
     if (!NET.legacy) NET.team = m.you;
-    if (S.rules !== (m.rules || 1) || S.seed !== (m.seed || 1)) newGame(m.rules || 1, m.seed || 1);   // this match's rules and map
+    if (S.rules !== (m.rules || 1) || S.seed !== (m.seed || 1) || S.mode !== (m.mode || 'humans'))
+      newGame(m.rules || 1, m.seed || 1, m.mode || 'humans');                                          // this match's rules, map and armies
     applyMatch(m, true);
     turnStarted(true);                           // look at your own army, even before any turn was played
     if (NET.team === 0 && !m.players[1] && !m.count) showShare();
@@ -2805,9 +3157,28 @@ $('lQuick').addEventListener('click', quickPlay);
 $('lCancel').addEventListener('click', async () => { setSearching(false); try { await api('DELETE', '/quick'); } catch { /* it expires anyway */ } });
 $('kofiLobby').addEventListener('click', () => { track('kofi', { where: 'lobby' }); flushEvents(); });
 $('kofiWait').addEventListener('click', () => { track('kofi', { where: 'waiting' }); flushEvents(); });
-$('lFriend').addEventListener('click', () => { track('friend'); flushEvents(); playFriend(); });
-$('lLocal').addEventListener('click', () => { botGame = false; newGame(undefined, randomSeed()); closeLobby(); track('hotseat_start'); hotseatWon = false; });
-$('lBot').addEventListener('click', () => { botGame = true; newGame(undefined, randomSeed()); botReset(); closeLobby(); track('hotseat_start', { bot: true }); hotseatWon = false; tutStart(); });
+$('lFriend').addEventListener('click', () => chooseMode('You play Blue (humans); your friend plays Red.', mode => { track('friend', { mode }); flushEvents(); playFriend(mode); }));
+// Before a game: which armies? Humans vs Humans, or Humans vs Vampires (Red is the vampires).
+let modeCb = null;
+function chooseMode(note, cb) {
+  modeCb = cb;
+  $('modeNote').textContent = note;
+  if (!$('modeVampPic').src) $('modeVampPic').src = unitTexture('first', 1, 'idle').image.toDataURL();
+  $('modePanel').hidden = false;
+}
+document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => {
+  $('modePanel').hidden = true;
+  const cb = modeCb; modeCb = null;
+  if (cb) cb(b.dataset.mode);
+}));
+$('modePanel').querySelector('.fclose').addEventListener('click', () => { $('modePanel').hidden = true; modeCb = null; });
+$('modePanel').addEventListener('click', e => { if (e.target === $('modePanel')) { $('modePanel').hidden = true; modeCb = null; } });
+$('lLocal').addEventListener('click', () => chooseMode('You play both sides on this device.', mode => {
+  botGame = false; newGame(undefined, randomSeed(), mode); closeLobby(); track('hotseat_start', { mode }); hotseatWon = false;
+}));
+$('lBot').addEventListener('click', () => chooseMode('You play the humans (Blue); the bot plays Red.', mode => {
+  botGame = true; newGame(undefined, randomSeed(), mode); botReset(); closeLobby(); track('hotseat_start', { bot: true, mode }); hotseatWon = false; tutStart();
+}));
 $('lNotify').addEventListener('click', async () => { if (!await enablePush(true)) flash('Notifications are not available here'); updatePushUi(); });
 $('lName').addEventListener('change', rename);
 $('lName').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
@@ -2906,8 +3277,8 @@ $('shareGo').addEventListener('click', shareLink);
 $('shareClose').addEventListener('click', () => { $('shareView').hidden = true; });
 // A fresh world: the latest rules with a random gold layout for pass & play, or a match's own rules and seed.
 const randomSeed = () => 1 + Math.floor(Math.random() * 2147483000);
-function newGame(rules, seed) {
-  S = newState(rules, seed);
+function newGame(rules, seed, mode) {
+  S = newState(rules, seed, mode);
   sel = 0;
   setMode(null);
   hiddenLoot.clear();
@@ -2920,7 +3291,7 @@ function newGame(rules, seed) {
 $('reset').addEventListener('pointerdown', e => {
   e.preventDefault();
   if (falling) return;
-  newGame(undefined, randomSeed());
+  newGame(undefined, randomSeed(), S.mode);
   if (botGame) botReset();
 });
 
@@ -3200,6 +3571,8 @@ function frame(now) {
   updateDayNight(dt);
   updateUnderground(dt);
   updateVillagers(now, dt);
+  updateBolts(now);
+  updateVampireView();
   unitGroups.forEach((g, k) => {
     const u = S.units[k];
     if (!u) return;
@@ -3246,6 +3619,7 @@ startOnline();
 // Debug only (file:// or ?debug): lets a test read the state and dig below the selected unit like a tap would.
 if (DEBUG) window.BW_DEBUG = {
   state: () => S, sel: () => selUnit(), pending: () => pending, walkerY: () => walker.p.y,
+  plan(x, y, z) { pending = [x, y, z]; walker.p.set(x + 0.5, y, z + 0.5); },      // a planned (unconfirmed) move, as if walked there
   // Stage a scene (screenshots, tests): fn(S, BlockSim) changes the world as one action, then the view catches up.
   act(fn) {
     beginAction(S); fn(S, BlockSim); rebuildChanged();
@@ -3255,7 +3629,7 @@ if (DEBUG) window.BW_DEBUG = {
   select(k) { selectUnit(k); },
   anim(k, kind) { playAnim(k, kind, S.units[k].x + 1.5, S.units[k].z + 0.5); },   // test an attack/dig animation
   // Play-testing against the bot from a script: start a bot game, run Blue's actions, watch the bot.
-  startBot(seed) { if (lobbyOpen) closeLobby(); botGame = true; newGame(undefined, seed); botReset(); stored('bw:tutorialDone', true); },
+  startBot(seed, mode) { if (lobbyOpen) closeLobby(); botGame = true; newGame(undefined, seed, mode); botReset(); stored('bw:tutorialDone', true); },
   run(acts) { const ok = runGroup(S, acts); animActs(acts); hiddenLoot.clear(); syncUnitGroups(); rebuildChanged(); refreshHud(); return ok; },
   botBusy: () => botBusy || falling || (botGame && S.team === BOT),
   fast(on) { botStepMs = on ? 0 : 220; },
